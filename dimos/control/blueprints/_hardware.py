@@ -105,6 +105,59 @@ def mock_twist_base(hw_id: str = "base") -> HardwareComponent:
     )
 
 
+# ---------------------------------------------------------------------------
+# Galaxea R1 Pro
+# ---------------------------------------------------------------------------
+
+
+def r1pro_arm_left(
+    hw_id: str = "left_arm", *, gripper: bool = True
+) -> HardwareComponent:
+    """R1 Pro left arm (7-DOF, ROS 2)."""
+    return HardwareComponent(
+        hardware_id=hw_id,
+        hardware_type=HardwareType.MANIPULATOR,
+        joints=make_joints(hw_id, 7),
+        adapter_type="r1pro_arm",
+        auto_enable=True,
+        adapter_kwargs={"side": "left"},
+        gripper_joints=make_gripper_joints(hw_id) if gripper else [],
+    )
+
+
+def r1pro_arm_right(
+    hw_id: str = "right_arm", *, gripper: bool = True
+) -> HardwareComponent:
+    """R1 Pro right arm (7-DOF, ROS 2)."""
+    return HardwareComponent(
+        hardware_id=hw_id,
+        hardware_type=HardwareType.MANIPULATOR,
+        joints=make_joints(hw_id, 7),
+        adapter_type="r1pro_arm",
+        auto_enable=True,
+        adapter_kwargs={"side": "right"},
+        gripper_joints=make_gripper_joints(hw_id) if gripper else [],
+    )
+
+
+def r1pro_chassis(hw_id: str = "base") -> HardwareComponent:
+    """R1 Pro holonomic chassis (3-DOF swerve, ROS 2).
+
+    Requires Gate 2 (mode=5 publisher) running on the robot.
+    """
+    return HardwareComponent(
+        hardware_id=hw_id,
+        hardware_type=HardwareType.BASE,
+        joints=make_twist_base_joints(hw_id),
+        adapter_type="r1pro_chassis",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Simulation
+# ---------------------------------------------------------------------------
+
+
 def sim_xarm7(
     hw_id: str = "arm", *, headless: bool = True, gripper: bool = False
 ) -> HardwareComponent:
