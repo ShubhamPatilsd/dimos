@@ -74,6 +74,18 @@ def _encode_joystick(lon: float, lat: float) -> bytes:
     return struct.pack("<dd", lon, lat)
 
 
+def _tool_vx_to_body_lon(vx: float) -> float:
+    """Map user/tool forward semantics to the body's local joystick convention.
+
+    Tool/API convention:
+      positive vx = forward
+
+    Body local testJoystick convention:
+      negative accel axis = forward
+    """
+    return -float(vx)
+
+
 class CommaBodySkillContainer(Module):
     """Movement skills for the Comma Body via Zenoh joystick bridge.
 
@@ -253,7 +265,7 @@ class CommaBodySkillContainer(Module):
             duration,
         )
         try:
-            self._run_loop(vx, angular, duration)
+            self._run_loop(_tool_vx_to_body_lon(vx), angular, duration)
         except Exception as e:
             self._send_stop()
             return f"Velocity command failed: {e}"
