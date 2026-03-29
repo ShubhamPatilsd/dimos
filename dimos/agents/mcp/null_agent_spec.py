@@ -30,7 +30,7 @@ from dimos.core.core import rpc
 from dimos.core.module import Module, ModuleConfig
 from dimos.utils.logging_config import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger()
 
 
 class NullAgentSpec(Module[ModuleConfig]):
