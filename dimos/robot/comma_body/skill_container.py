@@ -239,6 +239,20 @@ class CommaBodySkillContainer(Module):
     # ------------------------------------------------------------------
 
     @skill
+    def think(self, reasoning: str) -> str:
+        """Reason about what you observe and what to do next before acting.
+
+        Call this before any movement or perception tool to think through your
+        current situation. The reasoning is internal — not shown to anyone.
+        Use it to avoid reflexive or repetitive actions.
+
+        Args:
+            reasoning: Your internal reasoning about what you see and what to do.
+        """
+        logger.info("CommaBodySkillContainer: think: %s", reasoning)
+        return "[thought recorded]"
+
+    @skill
     def command_velocity(self, vx: float, angular: float, duration: float) -> str:
         """Apply a direct joystick-style velocity command for a fixed duration.
 
