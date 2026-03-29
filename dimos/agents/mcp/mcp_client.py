@@ -32,6 +32,7 @@ from dimos.core.core import rpc
 from dimos.core.module import Module, ModuleConfig
 from dimos.core.rpc_client import RPCClient
 from dimos.core.stream import In, Out
+from dimos.core.transport import pLCMTransport
 from dimos.utils.logging_config import setup_logger
 from dimos.utils.sequential_ids import SequentialIds
 
@@ -43,6 +44,7 @@ class McpClientConfig(ModuleConfig):
     model: str = "gpt-4o"
     model_fixture: str | None = None
     mcp_server_url: str = "http://localhost:9990/mcp"
+    human_input_topic: str = "/human_input"
 
 
 class McpClient(Module[McpClientConfig]):
@@ -168,7 +170,8 @@ class McpClient(Module[McpClientConfig]):
         def _on_human_input(string: str) -> None:
             self._message_queue.put(HumanMessage(content=string))
 
-        self._disposables.add(Disposable(self.human_input.subscribe(_on_human_input)))
+        transport: pLCMTransport[str] = pLCMTransport(self.config.human_input_topic)
+        self._disposables.add(Disposable(transport.subscribe(_on_human_input)))
 
     @rpc
     def on_system_modules(self, _modules: list[RPCClient]) -> None:

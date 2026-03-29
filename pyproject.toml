@@ -197,6 +197,10 @@ unitree = [
     "unitree-webrtc-connect-leshy>=2.0.7"
 ]
 
+comma-body = [
+    "eclipse-zenoh>=1.8.0",
+]
+
 manipulation = [
     # Planning (Drake)
     "drake==1.45.0; sys_platform == 'darwin' and platform_machine != 'aarch64'",

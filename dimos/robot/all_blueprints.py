@@ -16,6 +16,8 @@
 # Run `pytest dimos/robot/test_all_blueprints_generation.py` to regenerate.
 
 all_blueprints = {
+    "comma-body-agentic-duet": "dimos.robot.comma_body.blueprints.comma_body_agentic_duet:comma_body_agentic_duet",
+    "comma-body-spatial": "dimos.robot.comma_body.blueprints.comma_body_spatial:comma_body_spatial",
     "coordinator-basic": "dimos.control.blueprints.basic:coordinator_basic",
     "coordinator-cartesian-ik-mock": "dimos.control.blueprints.teleop:coordinator_cartesian_ik_mock",
     "coordinator-cartesian-ik-piper": "dimos.control.blueprints.teleop:coordinator_cartesian_ik_piper",
@@ -77,6 +79,7 @@ all_blueprints = {
     "unitree-g1-sim": "dimos.robot.unitree.g1.blueprints.perceptive.unitree_g1_sim:unitree_g1_sim",
     "unitree-go2": "dimos.robot.unitree.go2.blueprints.smart.unitree_go2:unitree_go2",
     "unitree-go2-agentic": "dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_agentic:unitree_go2_agentic",
+    "unitree-go2-agentic-duet": "dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_agentic_duet:unitree_go2_agentic_duet",
     "unitree-go2-agentic-huggingface": "dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_agentic_huggingface:unitree_go2_agentic_huggingface",
     "unitree-go2-agentic-ollama": "dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_agentic_ollama:unitree_go2_agentic_ollama",
     "unitree-go2-basic": "dimos.robot.unitree.go2.blueprints.basic.unitree_go2_basic:unitree_go2_basic",
@@ -102,6 +105,7 @@ all_modules = {
     "b-box-navigation-module": "dimos.navigation.bbox_navigation",
     "b1-connection-module": "dimos.robot.unitree.b1.connection",
     "camera-module": "dimos.hardware.sensors.camera.module",
+    "comma-body-skill-container": "dimos.robot.comma_body.skill_container",
     "cartesian-motion-controller": "dimos.manipulation.control.servo_control.cartesian_motion_controller",
     "control-coordinator": "dimos.control.coordinator",
     "cost-mapper": "dimos.mapping.costmapper",
@@ -122,6 +126,7 @@ all_modules = {
     "go2-connection": "dimos.robot.unitree.go2.connection",
     "go2-fleet-connection": "dimos.robot.unitree.go2.fleet_connection",
     "google-maps-skill-container": "dimos.agents.skills.google_maps_skill_container",
+    "inter-agent-skill": "dimos.agents.skills.inter_agent_skill",
     "gps-nav-skill-container": "dimos.agents.skills.gps_nav_skill",
     "grasp-gen-module": "dimos.manipulation.grasping.graspgen_module",
     "grasping-module": "dimos.manipulation.grasping.grasping",
@@ -173,4 +178,5 @@ all_modules = {
     "web-input": "dimos.agents.web_human_input",
     "websocket-vis-module": "dimos.web.websocket_vis.websocket_vis_module",
     "zed-camera": "dimos.hardware.sensors.camera.zed.camera",
+    "zenoh-slam-bridge": "dimos.robot.comma_body.zenoh_slam_bridge",
 }
