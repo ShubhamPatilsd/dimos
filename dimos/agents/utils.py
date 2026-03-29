@@ -35,13 +35,15 @@ TYPE_WIDTH = 12
 
 def pretty_print_langchain_message(msg: BaseMessage) -> None:
     d = msg.__dict__
-    msg_type = d.get("type", "unknown")
+    internal_message_type = d.get("additional_kwargs", {}).get("internal_message_type")
+    msg_type = internal_message_type or d.get("type", "unknown")
 
     type_colors = {
         "human": CYAN,
         "ai": GREEN,
         "tool": YELLOW,
         "system": MAGENTA,
+        "artefact": BLUE,
     }
     type_color = type_colors.get(msg_type, RESET)
 

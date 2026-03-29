@@ -16,6 +16,7 @@ from typing import Any
 
 from langchain_core.messages.base import BaseMessage
 
+from dimos.agents.annotation import skill
 from dimos.core.core import rpc
 from dimos.core.module import Module
 from dimos.core.stream import In, Out
@@ -54,6 +55,51 @@ class TaskLedger(Module):
 
     @rpc
     def get_summary(self) -> str:
+        return self._render_summary()
+
+    @skill
+    def get_task_ledger(self) -> str:
+        """Return the current internal task ledger.
+
+        Use this when you need to refresh your memory about your objective,
+        subgoal, recent findings, curiosity, or last failure before choosing
+        the next action.
+        """
+        return self._render_summary()
+
+    @skill
+    def update_task_ledger(
+        self,
+        objective: str = "",
+        subgoal: str = "",
+        recent_findings: str = "",
+        current_curiosity: str = "",
+        last_failed_action: str = "",
+    ) -> str:
+        """Update the internal task ledger.
+
+        Use this to deliberately keep track of your running agenda while you
+        work. Only provide the fields you want to change; leave the others as
+        empty strings.
+
+        Args:
+            objective: The current high-level objective.
+            subgoal: The immediate subgoal you are pursuing right now.
+            recent_findings: What you most recently learned.
+            current_curiosity: What you most want to inspect or test next.
+            last_failed_action: The most recent failure or blocked action.
+        """
+        if objective:
+            self._objective = objective
+        if subgoal:
+            self._subgoal = subgoal
+        if recent_findings:
+            self._recent_findings = recent_findings
+        if current_curiosity:
+            self._current_curiosity = current_curiosity
+        if last_failed_action:
+            self._last_failed_action = last_failed_action
+        self._publish_summary(force=True)
         return self._render_summary()
 
     def _publish_summary(self, *, force: bool = False) -> None:

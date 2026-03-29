@@ -153,7 +153,6 @@ class McpClient(Module[McpClientConfig]):
             for item in content:
                 if item.get("type") != "text":
                     uuid_ = str(uuid.uuid4())
-                    text += f"Tool call started with UUID: {uuid_}. You will be updated with the result soon."
                     _append_image_to_history(self, name, uuid_, item)
 
             return text
@@ -288,6 +287,10 @@ class McpClient(Module[McpClientConfig]):
         self, state_graph: CompiledStateGraph[Any, Any, Any, Any], message: BaseMessage
     ) -> None:
         self.agent_idle.publish(False)
+        if _should_skip_message(message):
+            if self._message_queue.empty():
+                self.agent_idle.publish(True)
+            return
         self._history.append(message)
         pretty_print_langchain_message(message)
         self.agent.publish(message)
@@ -295,6 +298,8 @@ class McpClient(Module[McpClientConfig]):
         for update in state_graph.stream({"messages": self._history}, stream_mode="updates"):
             for node_output in update.values():
                 for msg in node_output.get("messages", []):
+                    if _should_skip_message(msg):
+                        continue
                     self._history.append(msg)
                     pretty_print_langchain_message(msg)
                     self.agent.publish(msg)
@@ -308,12 +313,27 @@ def _append_image_to_history(
 ) -> None:
     mcp_client.add_message(
         HumanMessage(
+            additional_kwargs={
+                "internal_message_type": "artefact",
+                "source_tool": func_name,
+                "artifact_uuid": uuid_,
+            },
             content=[
                 {
                     "type": "text",
-                    "text": f"This is the artefact for the '{func_name}' tool with UUID:={uuid_}.",
+                    "text": f"[ARTEFACT] {func_name} UUID={uuid_}",
                 },
                 result,
             ]
         )
     )
+
+
+def _should_skip_message(message: BaseMessage) -> bool:
+    content = getattr(message, "content", None)
+    if isinstance(content, str) and content.strip():
+        return False
+    if isinstance(content, list) and len(content) > 0:
+        return False
+    tool_calls = getattr(message, "tool_calls", [])
+    return not tool_calls

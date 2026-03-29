@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import difflib
+import json
 import math
 import time
 
@@ -284,6 +285,147 @@ class UnitreeSkillContainer(Module):
         return str(datetime.datetime.now())
 
     @skill
+    def stop_move(self) -> str:
+        """Immediately stop direct sport-mode motion."""
+        try:
+            self._connection.publish_request(RTC_TOPIC["SPORT_MOD"], {"api_id": 1003})
+            return "Stopped direct motion."
+        except Exception as e:
+            logger.error(f"Failed to stop direct motion: {e}")
+            return "Failed to stop direct motion."
+
+    @skill
+    def direct_move(
+        self,
+        forward_velocity: float = 0.0,
+        lateral_velocity: float = 0.0,
+        yaw_velocity: float = 0.0,
+        duration: float = 1.0,
+    ) -> str:
+        """Move the robot using raw sport-mode velocity commands.
+
+        This bypasses the navigation planner and directly sends the WebRTC
+        sport-mode `Move` command (`api_id=1008`) repeatedly for the requested
+        duration, then issues `StopMove`.
+
+        Args:
+            forward_velocity: Forward/backward velocity. Positive is forward.
+            lateral_velocity: Left/right velocity. Positive is left.
+            yaw_velocity: Rotational velocity. Positive turns left.
+            duration: How long to command this motion in seconds.
+        """
+        forward_velocity = float(forward_velocity)
+        lateral_velocity = float(lateral_velocity)
+        yaw_velocity = float(yaw_velocity)
+        duration = max(0.0, float(duration))
+
+        deadline = time.monotonic() + duration
+        parameter = {
+            "x": forward_velocity,
+            "y": lateral_velocity,
+            "z": yaw_velocity,
+        }
+
+        try:
+            while time.monotonic() < deadline:
+                self._connection.publish_request(
+                    RTC_TOPIC["SPORT_MOD"],
+                    {"api_id": 1008, "parameter": json.dumps(parameter)},
+                )
+                time.sleep(0.1)
+            self._connection.publish_request(RTC_TOPIC["SPORT_MOD"], {"api_id": 1003})
+            return (
+                "Executed direct motion with "
+                f"forward={forward_velocity}, lateral={lateral_velocity}, "
+                f"yaw={yaw_velocity} for {duration}s."
+            )
+        except Exception as e:
+            logger.error(f"Failed to execute direct motion: {e}")
+            try:
+                self._connection.publish_request(RTC_TOPIC["SPORT_MOD"], {"api_id": 1003})
+            except Exception:
+                pass
+            return "Failed to execute direct motion."
+
+    @skill
+    def turn_in_place(self, yaw_velocity: float, duration: float = 1.0) -> str:
+        """Rotate the robot in place using direct sport-mode velocity control.
+
+        Args:
+            yaw_velocity: Rotational velocity. Positive turns left, negative turns right.
+            duration: How long to rotate in seconds.
+        """
+        return self.direct_move(
+            forward_velocity=0.0,
+            lateral_velocity=0.0,
+            yaw_velocity=float(yaw_velocity),
+            duration=float(duration),
+        )
+
+    @skill
+    def set_obstacle_avoidance(self, enabled: bool) -> str:
+        """Enable or disable the robot's obstacle avoidance layer.
+
+        Args:
+            enabled: Whether obstacle avoidance should be enabled.
+        """
+        try:
+            self._connection.publish_request(
+                RTC_TOPIC["OBSTACLES_AVOID"],
+                {"api_id": 1001, "parameter": {"enable": int(enabled)}},
+            )
+            return f"Obstacle avoidance set to {enabled}."
+        except Exception as e:
+            logger.error(f"Failed to set obstacle avoidance: {e}")
+            return "Failed to set obstacle avoidance."
+
+    @skill
+    def set_body_height(self, height: float) -> str:
+        """Adjust the robot body height in sport mode.
+
+        Args:
+            height: Requested body-height setting passed through to the Unitree sport API.
+        """
+        return self._execute_parameterized_sport_command("BodyHeight", float(height))
+
+    @skill
+    def set_foot_raise_height(self, height: float) -> str:
+        """Adjust how high the robot lifts its feet during movement.
+
+        Args:
+            height: Requested foot raise height passed through to the Unitree sport API.
+        """
+        return self._execute_parameterized_sport_command("FootRaiseHeight", float(height))
+
+    @skill
+    def set_speed_level(self, level: int) -> str:
+        """Set the robot's sport-mode speed level.
+
+        Args:
+            level: Integer speed level passed through to the Unitree sport API.
+        """
+        return self._execute_parameterized_sport_command("SpeedLevel", int(level))
+
+    @skill
+    def switch_gait(self, gait_id: int) -> str:
+        """Switch the robot gait using the Unitree sport API.
+
+        Args:
+            gait_id: Integer gait identifier to pass through to the robot.
+        """
+        return self._execute_parameterized_sport_command("SwitchGait", int(gait_id))
+
+    @skill
+    def set_continuous_gait(self, enabled: bool) -> str:
+        """Enable or disable continuous gait mode."""
+        return self._execute_parameterized_sport_command("ContinuousGait", int(enabled))
+
+    @skill
+    def set_economic_gait(self, enabled: bool) -> str:
+        """Enable or disable energy-saving gait mode."""
+        return self._execute_parameterized_sport_command("EconomicGait", int(enabled))
+
+    @skill
     def crouch(self) -> str:
         """Lower the robot into a crouched or lowered posture.
 
@@ -306,6 +448,44 @@ class UnitreeSkillContainer(Module):
     def recover_stand(self) -> str:
         """Recover the robot into a stable standing posture after dynamic motions or awkward states."""
         return self.execute_sport_command("RecoveryStand")
+
+    @skill
+    def balance_stand(self) -> str:
+        """Hold a stable balanced standing posture."""
+        return self.execute_sport_command("BalanceStand")
+
+    @skill
+    def rise_sit(self) -> str:
+        """Rise from a sitting posture back to standing."""
+        return self.execute_sport_command("RiseSit")
+
+    @skill
+    def hello_gesture(self) -> str:
+        """Perform the Unitree hello gesture."""
+        return self.execute_sport_command("Hello")
+
+    @skill
+    def stretch_body(self) -> str:
+        """Perform the Unitree stretch routine."""
+        return self.execute_sport_command("Stretch")
+
+    @skill
+    def finger_heart(self) -> str:
+        """Perform the Unitree finger-heart gesture."""
+        return self.execute_sport_command("FingerHeart")
+
+    def _execute_parameterized_sport_command(self, command_name: str, value: float | int) -> str:
+        id_, _ = _UNITREE_COMMANDS[command_name]
+
+        try:
+            self._connection.publish_request(
+                RTC_TOPIC["SPORT_MOD"],
+                {"api_id": id_, "parameter": {"data": value}},
+            )
+            return f"'{command_name}' command executed with value={value}."
+        except Exception as e:
+            logger.error(f"Failed to execute {command_name} with value={value}: {e}")
+            return f"Failed to execute '{command_name}' with value={value}."
 
     @skill
     def execute_sport_command(self, command_name: str) -> str:
