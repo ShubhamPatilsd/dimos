@@ -36,6 +36,7 @@ class AutonomyLoop(Module):
 
     agent_idle: In[bool]
     agent: In[BaseMessage]
+    ledger_summary: In[str]
 
     def __init__(
         self,
@@ -73,6 +74,7 @@ class AutonomyLoop(Module):
         self._last_external_human_at = 0.0
         self._pending_followup = False
         self._idle_followup_due_at: float | None = None
+        self._ledger_summary = ""
 
     @rpc
     def start(self) -> None:
@@ -80,6 +82,7 @@ class AutonomyLoop(Module):
         self._start_time = time.monotonic()
         self._disposables.add(Disposable(self.agent_idle.subscribe(self._on_agent_idle)))
         self._disposables.add(Disposable(self.agent.subscribe(self._on_agent_message)))
+        self._disposables.add(Disposable(self.ledger_summary.subscribe(self._on_ledger_summary)))
         self._thread = Thread(target=self._run_loop, daemon=True)
         self._thread.start()
         logger.info("AutonomyLoop started for topic=%s", self._human_input_topic)
@@ -120,8 +123,17 @@ class AutonomyLoop(Module):
                 if self._is_idle:
                     self._idle_followup_due_at = now + self._followup_delay_s
 
+    def _on_ledger_summary(self, summary: str) -> None:
+        with self._lock:
+            self._ledger_summary = summary
+
     def _publish_prompt(self, prompt: str) -> None:
-        self._transport.publish(f"{AUTONOMY_PREFIX} {prompt}")
+        with self._lock:
+            ledger = self._ledger_summary
+        full_prompt = f"{AUTONOMY_PREFIX} {prompt}"
+        if ledger:
+            full_prompt = f"{full_prompt}\n\n{ledger}"
+        self._transport.publish(full_prompt)
         logger.info("AutonomyLoop injected prompt on %s", self._human_input_topic)
 
     def _run_loop(self) -> None:

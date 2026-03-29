@@ -284,6 +284,30 @@ class UnitreeSkillContainer(Module):
         return str(datetime.datetime.now())
 
     @skill
+    def crouch(self) -> str:
+        """Lower the robot into a crouched or lowered posture.
+
+        This is the closest exposed posture-control alias to a crouch on the
+        current Go2 stack. It uses the Unitree `StandDown` posture command.
+        """
+        return self.execute_sport_command("StandDown")
+
+    @skill
+    def sit_down(self) -> str:
+        """Make the robot sit down in place."""
+        return self.execute_sport_command("Sit")
+
+    @skill
+    def stand_up_posture(self) -> str:
+        """Bring the robot into a standing posture."""
+        return self.execute_sport_command("StandUp")
+
+    @skill
+    def recover_stand(self) -> str:
+        """Recover the robot into a stable standing posture after dynamic motions or awkward states."""
+        return self.execute_sport_command("RecoveryStand")
+
+    @skill
     def execute_sport_command(self, command_name: str) -> str:
         if command_name not in _UNITREE_COMMANDS:
             suggestions = difflib.get_close_matches(

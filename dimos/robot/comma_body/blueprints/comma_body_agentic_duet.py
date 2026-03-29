@@ -40,6 +40,7 @@ Prerequisites
 from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
+from dimos.agents.task_ledger import TaskLedger
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
 from dimos.agents.web_human_input import WebInput
 from dimos.core.blueprints import autoconnect
@@ -57,6 +58,7 @@ comma_body_agentic_duet = autoconnect(
         model="gpt-5.4-mini",
     ),
     CommaBodySkillContainer.blueprint(),
+    TaskLedger.blueprint(),
     AutonomyLoop.blueprint(
         human_input_topic="/comma_body/human_input",
         boot_prompt=(
@@ -81,6 +83,7 @@ comma_body_agentic_duet = autoconnect(
 ).remappings(
     [
         (McpClient, "agent", "comma_body_agent"),
+        (TaskLedger, "agent", "comma_body_agent"),
         (AutonomyLoop, "agent", "comma_body_agent"),
         (WebInput, "agent", "comma_body_agent"),
     ]

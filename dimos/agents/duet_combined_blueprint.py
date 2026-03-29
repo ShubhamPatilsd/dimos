@@ -32,6 +32,7 @@ from dimos.agents.duet_dashboard import duet_dashboard
 from dimos.agents.go2_status_bridge import Go2StatusBridge
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer, handle_request
+from dimos.agents.task_ledger import TaskLedger
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
 from dimos.agents.skills.navigation import NavigationSkillContainer
 from dimos.agents.skills.person_follow import PersonFollowSkillContainer
@@ -88,12 +89,20 @@ class Go2AutonomyLoop(AutonomyLoop):
     """Go2-specific autonomy loop."""
 
 
+class Go2TaskLedger(TaskLedger):
+    """Go2-specific task ledger."""
+
+
 class CombinedGo2StatusBridge(Go2StatusBridge):
     """Go2-specific status bridge for the combined blueprint."""
 
 
 class CommaBodyAutonomyLoop(AutonomyLoop):
     """Comma Body-specific autonomy loop."""
+
+
+class CommaBodyTaskLedger(TaskLedger):
+    """Comma Body-specific task ledger."""
 
 
 class Go2InterAgentSkill(InterAgentSkill):
@@ -245,6 +254,7 @@ go2_allowed_classes = _allowed_classes(
         PersonFollowSkillContainer,
         UnitreeSkillContainer,
         CombinedGo2StatusBridge,
+        Go2TaskLedger,
         Go2AutonomyLoop,
         Go2InterAgentSkill,
         Go2WebInput,
@@ -257,6 +267,7 @@ comma_allowed_classes = _allowed_classes(
         CommaBodyScopedMcpServer,
         CommaBodyMcpClient,
         CommaBodySkillContainer,
+        CommaBodyTaskLedger,
         CommaBodyAutonomyLoop,
         CommaBodyInterAgentSkill,
         CommaBodyWebInput,
@@ -280,6 +291,7 @@ duet_combined = autoconnect(
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
     UnitreeSkillContainer.blueprint(),
     CombinedGo2StatusBridge.blueprint(),
+    Go2TaskLedger.blueprint(),
     Go2AutonomyLoop.blueprint(
         human_input_topic="/go2/human_input",
         boot_prompt=(
@@ -315,6 +327,7 @@ duet_combined = autoconnect(
         model="gpt-5.4-mini",
     ),
     CommaBodySkillContainer.blueprint(),
+    CommaBodyTaskLedger.blueprint(),
     CommaBodyAutonomyLoop.blueprint(
         human_input_topic="/comma_body/human_input",
         boot_prompt=(
@@ -340,11 +353,13 @@ duet_combined = autoconnect(
 ).remappings(
     [
         (Go2McpClient, "agent", "go2_agent"),
+        (Go2TaskLedger, "agent", "go2_agent"),
         (Go2AutonomyLoop, "agent", "go2_agent"),
         (Go2WebInput, "agent", "go2_agent"),
         (Go2McpClient, "agent_idle", "go2_agent_idle"),
         (Go2AutonomyLoop, "agent_idle", "go2_agent_idle"),
         (CommaBodyMcpClient, "agent", "comma_body_agent"),
+        (CommaBodyTaskLedger, "agent", "comma_body_agent"),
         (CommaBodyAutonomyLoop, "agent", "comma_body_agent"),
         (CommaBodyWebInput, "agent", "comma_body_agent"),
         (CommaBodyMcpClient, "agent_idle", "comma_body_agent_idle"),
