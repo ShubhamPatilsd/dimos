@@ -179,8 +179,10 @@ comma_body_agentic_duet = autoconnect(
         model="gpt-5.4-mini",
         ota_loop_interval_s=4.0,
         ota_loop_prompt=(
-            "A live camera frame from your onboard camera is attached to this message — look at it. "
-            "Call `think` with what you observe and what you want to do next, then act. "
+            "A live camera frame and your current world model are attached. "
+            "Call `think` with: (1) what you see ahead, (2) what your world model says about "
+            "each direction, (3) which direction is unexplored or most interesting. "
+            "Then act: `move_sequence` to move, then `record_observation` with what you see. "
             "Do not answer in plain English."
         ),
     ),

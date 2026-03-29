@@ -42,6 +42,7 @@ from typing import Any
 from dimos.agents.annotation import skill
 from dimos.core.core import rpc
 from dimos.core.module import Module
+from dimos.core.stream import Out
 from dimos.utils.logging_config import setup_logger
 
 logger = setup_logger()
@@ -86,6 +87,45 @@ def _tool_vx_to_body_lon(vx: float) -> float:
     return -float(vx)
 
 
+_BUCKET_LABELS: dict[int, str] = {
+    0: "N (forward at start)",
+    45: "NE",
+    90: "E",
+    135: "SE",
+    180: "S (backward at start)",
+    225: "SW",
+    270: "W",
+    315: "NW",
+}
+
+
+def _heading_to_bucket(heading_deg: float) -> int:
+    """Snap a heading to the nearest 45° bucket (0, 45, ..., 315)."""
+    return round(heading_deg / 45) * 45 % 360
+
+
+def _relative_label(current_bucket: int, target_bucket: int) -> str:
+    """Return a relative direction label (front/left/right/behind) from current heading."""
+    diff = (target_bucket - current_bucket) % 360
+    if diff == 0:
+        return "front"
+    elif diff == 45:
+        return "front-left"
+    elif diff == 90:
+        return "left"
+    elif diff == 135:
+        return "back-left"
+    elif diff == 180:
+        return "behind"
+    elif diff == 225:
+        return "back-right"
+    elif diff == 270:
+        return "right"
+    elif diff == 315:
+        return "front-right"
+    return f"{diff}°"
+
+
 class CommaBodySkillContainer(Module):
     """Movement skills for the Comma Body via Zenoh joystick bridge.
 
@@ -103,6 +143,8 @@ class CommaBodySkillContainer(Module):
         when this runs on the DGX alongside ZenohSlamBridge).
     """
 
+    spatial_context: Out[str]
+
     def __init__(
         self,
         joystick_topic: str = _JOYSTICK_TOPIC,
@@ -115,6 +157,10 @@ class CommaBodySkillContainer(Module):
         self._session: Any | None = None
         self._pub: Any | None = None
         self._lock = threading.Lock()
+        # Dead-reckoned heading (degrees). 0 = direction Wally faced at startup.
+        self._heading_deg: float = 0.0
+        # Egocentric world model: heading bucket -> text description.
+        self._observations: dict[int, str] = {}
 
     @rpc
     def start(self) -> None:
@@ -165,6 +211,27 @@ class CommaBodySkillContainer(Module):
             self._send(0.0, 0.0)
         except Exception as e:
             logger.warning("CommaBodySkillContainer: stop failed: %s", e)
+
+    def _update_heading(self, angular: float, duration: float) -> None:
+        """Update dead-reckoned heading from a lateral joystick command."""
+        delta = angular * _TURN_RATE_DEG_PER_SEC * duration
+        self._heading_deg = (self._heading_deg + delta) % 360
+
+    def _build_world_model(self) -> str:
+        """Build a human-readable spatial context string from current observations."""
+        current = _heading_to_bucket(self._heading_deg)
+        lines = [f"[WORLD MODEL] Estimated heading: ~{current}° ({_BUCKET_LABELS.get(current, '')})"]
+        for bucket in sorted(_BUCKET_LABELS):
+            rel = _relative_label(current, bucket)
+            obs = self._observations.get(bucket, "not yet observed")
+            lines.append(f"  {rel:12s}: {obs}")
+        return "\n".join(lines)
+
+    def _publish_world_model(self) -> None:
+        try:
+            self.spatial_context.publish(self._build_world_model())
+        except Exception:
+            pass  # stream may not be connected in all deployments
 
     def _run_loop(self, lon: float, lat: float, duration: float) -> None:
         """Send (lon, lat) at _CMD_HZ for duration seconds, then stop."""
@@ -253,6 +320,32 @@ class CommaBodySkillContainer(Module):
         return "[thought recorded]"
 
     @skill
+    def record_observation(self, description: str) -> str:
+        """Record what you currently see, storing it at your current heading.
+
+        Call this after each move_sequence to update your world model with what
+        you observe in the direction you are now facing. This builds your spatial
+        memory so you always know what is in front, behind, left, and right.
+
+        Args:
+            description: Brief description of what you see (wall, open hallway, person, desk, etc.)
+        """
+        bucket = _heading_to_bucket(self._heading_deg)
+        self._observations[bucket] = description
+        self._publish_world_model()
+        return f"Recorded at ~{bucket}° (your current front): {description[:100]}"
+
+    @skill
+    def recall_surroundings(self) -> str:
+        """Get your current world model — what you have observed in each direction.
+
+        Returns a directional summary of everything you have recorded around you,
+        relative to your current heading. Use this to decide which direction is
+        unexplored or most interesting to move toward.
+        """
+        return self._build_world_model()
+
+    @skill
     def move_sequence(self, steps: list[dict]) -> str:
         """Execute a sequence of movement commands back-to-back with no delay between them.
 
@@ -287,10 +380,12 @@ class CommaBodySkillContainer(Module):
                 duration = float(step.get("duration", 0.5))
                 duration = max(0.05, min(duration, 4.0))
                 self._run_loop(_tool_vx_to_body_lon(vx), angular, duration)
+                self._update_heading(angular, duration)
                 summary.append(f"vx={vx:.2f} ang={angular:.2f} {duration:.2f}s")
         except Exception as e:
             self._send_stop()
             return f"move_sequence failed: {e}"
+        self._publish_world_model()
         return "Sequence done: " + " → ".join(summary)
 
     @skill
@@ -321,9 +416,11 @@ class CommaBodySkillContainer(Module):
         )
         try:
             self._run_loop(_tool_vx_to_body_lon(vx), angular, duration)
+            self._update_heading(angular, duration)
         except Exception as e:
             self._send_stop()
             return f"Velocity command failed: {e}"
+        self._publish_world_model()
         return f"Applied velocity command vx={vx:.2f}, angular={angular:.2f} for {duration:.2f}s"
 
     @skill

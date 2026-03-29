@@ -65,6 +65,7 @@ class McpClient(Module[McpClientConfig]):
     agent: Out[BaseMessage]
     human_input: In[str]
     color_image: In[Image]
+    spatial_context: In[str]
     agent_idle: Out[bool]
 
     _lock: RLock
@@ -96,6 +97,7 @@ class McpClient(Module[McpClientConfig]):
         self._http_client = httpx.Client(timeout=120.0)
         self._seq_ids = SequentialIds()
         self._latest_image = None
+        self._latest_spatial_context: str | None = None
         self._ota_thread = None
         self._processing = False
 
@@ -191,6 +193,11 @@ class McpClient(Module[McpClientConfig]):
 
         def _on_color_image(image: Image) -> None:
             self._latest_image = image
+
+        def _on_spatial_context(ctx: str) -> None:
+            self._latest_spatial_context = ctx
+
+        self._disposables.add(Disposable(self.spatial_context.subscribe(_on_spatial_context)))
 
         transport: pLCMTransport[str] = pLCMTransport(self.config.human_input_topic)
         self._disposables.add(Disposable(transport.subscribe(_on_human_input)))
@@ -374,31 +381,39 @@ class McpClient(Module[McpClientConfig]):
         if age_s > self.config.latest_image_max_age_s:
             return []
 
+        content: list[dict] = [
+            {
+                "type": "text",
+                "text": (
+                    "[VISION] Latest live camera frame. This image is transient context "
+                    "for the current decision only. Do not describe it to the user unless relevant."
+                ),
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": (
+                        "data:image/jpeg;base64,"
+                        + latest_image.to_base64(
+                            quality=self.config.latest_image_quality,
+                            max_width=self.config.latest_image_max_width,
+                            max_height=self.config.latest_image_max_height,
+                        )
+                    )
+                },
+            },
+        ]
+
+        if self._latest_spatial_context is not None:
+            content.append({
+                "type": "text",
+                "text": self._latest_spatial_context,
+            })
+
         return [
             HumanMessage(
                 additional_kwargs={"internal_message_type": "vision_context"},
-                content=[
-                    {
-                        "type": "text",
-                        "text": (
-                            "[VISION] Latest live camera frame. This image is transient context "
-                            "for the current decision only. Do not describe it to the user unless relevant."
-                        ),
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": (
-                                "data:image/jpeg;base64,"
-                                + latest_image.to_base64(
-                                    quality=self.config.latest_image_quality,
-                                    max_width=self.config.latest_image_max_width,
-                                    max_height=self.config.latest_image_max_height,
-                                )
-                            )
-                        },
-                    },
-                ],
+                content=content,
             )
         ]
 
