@@ -59,7 +59,12 @@ unitree_go2_agentic_duet = autoconnect(
         peer_topic="/comma_body/human_input",
         peer_name="Wally (Comma Body)",
     ),
-    WebInput.blueprint(human_input_topic="/go2/human_input"),
+    WebInput.blueprint(human_input_topic="/go2/human_input", port=5555),
+).remappings(
+    [
+        (McpClient, "agent", "go2_agent"),
+        (WebInput, "agent", "go2_agent"),
+    ]
 )
 
 __all__ = ["unitree_go2_agentic_duet"]
