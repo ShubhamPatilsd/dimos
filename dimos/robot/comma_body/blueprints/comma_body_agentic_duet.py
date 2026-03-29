@@ -54,6 +54,7 @@ comma_body_agentic_duet = autoconnect(
         mcp_server_url="http://localhost:9991/mcp",
         human_input_topic="/comma_body/human_input",
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
+        model="gpt-4.1-mini",
     ),
     CommaBodySkillContainer.blueprint(),
     InterAgentSkill.blueprint(

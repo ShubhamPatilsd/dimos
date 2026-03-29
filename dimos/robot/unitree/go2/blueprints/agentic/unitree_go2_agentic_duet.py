@@ -50,6 +50,7 @@ unitree_go2_agentic_duet = autoconnect(
     McpClient.blueprint(
         human_input_topic="/go2/human_input",
         system_prompt=GO2_DUET_SYSTEM_PROMPT,
+        model="gpt-4.1-mini",
     ),
     NavigationSkillContainer.blueprint(),
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
