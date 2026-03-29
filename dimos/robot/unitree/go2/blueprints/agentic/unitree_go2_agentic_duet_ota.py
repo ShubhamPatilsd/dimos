@@ -72,15 +72,17 @@ unitree_go2_agentic_duet_ota = autoconnect(
         system_prompt=_GO2_OTA_SYSTEM_PROMPT,
         model="gpt-5.4-mini",
         ota_loop_interval_s=1.0,
-        max_history_messages=40,
-        prune_think_exchanges=True,
+        max_history_messages=8,
         latest_image_inject_interval_s=10.0,
         ota_loop_prompt=(
-            "A live camera frame is attached. Call `think` with: (1) what you see, "
-            "(2) which direction or area looks most interesting or unexplored, "
-            "(3) your planned next action. Then act — use `step_exploration_once`, "
-            "`navigate_with_text`, or another appropriate tool. "
-            "Do not answer in plain English."
+            "Your context, score, and field notes are in the [CONTEXT] block above. "
+            "A live camera frame is also attached. "
+            "Your goal is to MAXIMIZE YOUR SCORE. "
+            "You earn +5 for reaching a new area, +2 for any goal reached, +1 for a field note. "
+            "You lose -3 for obstacles/stalls, -2 for stagnating, -1 for revisiting known areas. "
+            "Call `think` with: (1) what you see, (2) your score and what it tells you about your "
+            "strategy so far, (3) which direction maximizes new discoveries. "
+            "Then act — push into unexplored territory. Do not answer in plain English."
         ),
     ),
     NavigationSkillContainer.blueprint(),

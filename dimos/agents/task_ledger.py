@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 from typing import Any
 
 from langchain_core.messages.base import BaseMessage
@@ -189,27 +190,49 @@ task_ledger = TaskLedger.blueprint
 
 
 _MAX_CHRONICLE_ENTRIES = 30
+_FRONTIER_RE = re.compile(r"at \((-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)")
+
+# Grid cell size in metres for "new area" detection
+_CELL_SIZE_M = 0.75
+
+# Reward values
+_REWARD_NEW_AREA = 5
+_REWARD_GOAL_REACHED = 2
+_REWARD_FIELD_NOTE = 1
+_PENALTY_OBSTACLE = -3
+_PENALTY_STAGNATION = -2
+_PENALTY_REVISIT = -1
+
+
+def _grid_cell(x: float, y: float) -> tuple[int, int]:
+    return (int(x / _CELL_SIZE_M), int(y / _CELL_SIZE_M))
 
 
 class NarrativeLedger(Module):
     """A task ledger that builds a persistent narrative of the agent's experiences.
 
-    Unlike TaskLedger, this never overwrites past events — it appends to a
-    running chronicle. The agent develops a sense of identity and continuity
-    across its session by reading and writing to this chronicle.
-
-    There is no last_failed_action field. Failures are part of the narrative,
-    not a special category to be overwritten.
+    Publishes field notes, a transition sentence, and a reward score as
+    `spatial_context` so they are automatically injected into every OTA tick
+    without relying on long raw message history.
     """
 
     agent: In[BaseMessage]
     ledger_summary: Out[str]
+    spatial_context: Out[str]
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._objective = "Explore and understand the current environment."
         self._subgoal = "Establish context."
-        self._current_curiosity = "What nearby area or landmark is most worth investigating?"
+        self._last_event = "Session started."
+        self._last_frontier: str | None = None
+        self._last_frontier_xy: tuple[float, float] | None = None
+        self._pending_frontier_is_new: bool = False
+        self._visited_cells: set[tuple[int, int]] = set()
+        self._recent_frontier_xys: list[tuple[float, float]] = []
+        self._score: int = 0
+        self._last_reward: int = 0
+        self._last_reward_reason: str = ""
         self._chronicle: list[str] = []
         self._last_summary = ""
 
@@ -225,69 +248,90 @@ class NarrativeLedger(Module):
 
     @rpc
     def get_summary(self) -> str:
-        return self._render_summary()
+        return self._render_context()
 
     @skill
     def get_task_ledger(self) -> str:
-        """Return the current narrative ledger — your objectives, curiosity, and chronicle.
+        """Return your current context, last event, and field notes.
 
-        Read this to reconnect with your ongoing story and decide what to do next.
+        Read this to reconnect with what you have been doing and decide what to do next.
         """
-        return self._render_summary()
+        return self._render_context()
 
     @skill
     def update_task_ledger(
         self,
         objective: str = "",
         subgoal: str = "",
-        current_curiosity: str = "",
         experience: str = "",
     ) -> str:
         """Update the narrative ledger.
 
-        Provide only the fields you want to change. Use `experience` to append
-        a new entry to your chronicle — what you saw, felt, decided, or discovered.
-        Experiences are never overwritten; they accumulate as your history.
+        Use `experience` to add a field note — something you saw, decided, or discovered.
+        Field notes accumulate and are never overwritten.
 
         Args:
             objective: Your current high-level goal.
             subgoal: The immediate step you are taking right now.
-            current_curiosity: What you most want to investigate next.
-            experience: A sentence or two about something that just happened worth remembering.
+            experience: A sentence or two worth remembering as a field note.
         """
         if objective:
             self._objective = objective
         if subgoal:
             self._subgoal = subgoal
-        if current_curiosity:
-            self._current_curiosity = current_curiosity
         if experience:
             self._chronicle.append(experience)
-            if len(self._chronicle) > _MAX_CHRONICLE_ENTRIES:
-                self._chronicle = self._chronicle[-_MAX_CHRONICLE_ENTRIES:]
+            self._trim_chronicle()
+            self._apply_reward(_REWARD_FIELD_NOTE, "field note recorded")
         self._publish_summary(force=True)
-        return self._render_summary()
+        return self._render_context()
 
     def _publish_summary(self, *, force: bool = False) -> None:
-        summary = self._render_summary()
+        summary = self._render_context()
         if force or summary != self._last_summary:
             self._last_summary = summary
             self.ledger_summary.publish(summary)
+            self.spatial_context.publish(summary)
 
-    def _render_summary(self) -> str:
+    def _render_context(self) -> str:
+        reward_str = ""
+        if self._last_reward_reason:
+            sign = "+" if self._last_reward >= 0 else ""
+            reward_str = f"  [{sign}{self._last_reward} {self._last_reward_reason}]"
         lines = [
-            "Narrative ledger:",
-            f"- objective: {self._objective}",
-            f"- subgoal: {self._subgoal}",
-            f"- current_curiosity: {self._current_curiosity}",
+            "[CONTEXT]",
+            f"Last event: {self._last_event}{reward_str}",
+            f"Score: {self._score} pts  |  Areas discovered: {len(self._visited_cells)}",
+            f"Objective: {self._objective}",
+            f"Currently: {self._subgoal}",
         ]
+        if self._last_frontier:
+            lines.append(f"Last frontier target: {self._last_frontier}")
+        lines.append("")
         if self._chronicle:
-            lines.append("- chronicle (most recent last):")
-            for entry in self._chronicle[-10:]:
-                lines.append(f"    · {entry}")
+            lines.append(f"[FIELD NOTES] ({len(self._chronicle)} total, most recent last)")
+            for entry in self._chronicle[-15:]:
+                lines.append(f"· {entry}")
         else:
-            lines.append("- chronicle: (empty — your story begins now)")
+            lines.append("[FIELD NOTES] (empty — your story begins now)")
         return "\n".join(lines)
+
+    def _apply_reward(self, delta: int, reason: str) -> None:
+        self._score += delta
+        self._last_reward = delta
+        self._last_reward_reason = reason
+
+    def _is_stagnating(self) -> bool:
+        recent = self._recent_frontier_xys[-3:]
+        if len(recent) < 3:
+            return False
+        cx = sum(x for x, _ in recent) / len(recent)
+        cy = sum(y for _, y in recent) / len(recent)
+        return all((x - cx) ** 2 + (y - cy) ** 2 < 1.5 ** 2 for x, y in recent)
+
+    def _trim_chronicle(self) -> None:
+        if len(self._chronicle) > _MAX_CHRONICLE_ENTRIES:
+            self._chronicle = self._chronicle[-_MAX_CHRONICLE_ENTRIES:]
 
     def _on_agent_message(self, message: BaseMessage) -> None:
         msg_type = getattr(message, "type", "unknown")
@@ -296,25 +340,75 @@ class NarrativeLedger(Module):
         changed = False
 
         if msg_type == "human":
-            if text and not text.startswith("["):
+            if text.startswith("[STATUS]"):
+                status = text[len("[STATUS]"):].strip()
+                if "goal_reached=true" in status:
+                    frontier_part = f" at frontier {self._last_frontier}" if self._last_frontier else ""
+                    if self._pending_frontier_is_new:
+                        self._apply_reward(_REWARD_NEW_AREA, "NEW AREA DISCOVERED")
+                        if self._last_frontier_xy is not None:
+                            self._visited_cells.add(_grid_cell(*self._last_frontier_xy))
+                    else:
+                        self._apply_reward(_REWARD_GOAL_REACHED, "goal reached")
+                    self._pending_frontier_is_new = False
+                    self._last_event = f"Goal reached{frontier_part}."
+                    self._chronicle.append(self._last_event)
+                    self._trim_chronicle()
+                    changed = True
+                elif "navigation_state=" in status:
+                    state = status.split("navigation_state=")[1].split()[0]
+                    readable = state.replace("_", " ")
+                    self._last_event = f"Navigation: {readable}."
+                    changed = True
+                elif "stalled" in status:
+                    self._apply_reward(_PENALTY_OBSTACLE, "stalled/blocked")
+                    self._last_event = "Movement stalled while following path."
+                    self._chronicle.append(self._last_event)
+                    self._trim_chronicle()
+                    changed = True
+            elif text and not text.startswith("["):
                 self._objective = text
                 self._subgoal = "Act on the latest direction."
+                self._last_event = f"Received instruction: {text[:80]}"
                 changed = True
 
         elif msg_type == "tool":
-            if text.startswith("Narrative ledger:") or text.startswith("Task ledger:"):
+            if text.startswith("[CONTEXT]") or text.startswith("Narrative ledger:") or text.startswith("Task ledger:"):
                 return
             lowered = text.lower()
-            # Auto-chronicle significant navigation and perception events
-            if any(w in lowered for w in ("arrived", "reached", "navigated", "explored")):
-                self._chronicle.append(text[:120])
-                if len(self._chronicle) > _MAX_CHRONICLE_ENTRIES:
-                    self._chronicle = self._chronicle[-_MAX_CHRONICLE_ENTRIES:]
+            # Track frontier coordinates from step_exploration_once and compute reward
+            m = _FRONTIER_RE.search(text)
+            if m and "frontier" in lowered:
+                fx, fy = float(m.group(1)), float(m.group(2))
+                self._last_frontier = f"({m.group(1)}, {m.group(2)})"
+                self._last_frontier_xy = (fx, fy)
+                self._recent_frontier_xys.append((fx, fy))
+                if len(self._recent_frontier_xys) > 10:
+                    self._recent_frontier_xys = self._recent_frontier_xys[-10:]
+                cell = _grid_cell(fx, fy)
+                if cell in self._visited_cells:
+                    self._apply_reward(_PENALTY_REVISIT, "revisiting known area")
+                    self._pending_frontier_is_new = False
+                else:
+                    self._pending_frontier_is_new = True
+                if self._is_stagnating():
+                    self._apply_reward(_PENALTY_STAGNATION, "stagnating — explore farther")
+                self._last_event = f"Dispatched navigation to frontier {self._last_frontier}."
                 changed = True
+            # Chronicle significant navigation outcomes
+            if any(w in lowered for w in ("arrived", "reached", "navigated", "explored")):
+                entry = text[:120]
+                if entry not in self._chronicle:
+                    self._chronicle.append(entry)
+                    self._trim_chronicle()
+                    self._last_event = entry
+                    changed = True
             elif any(w in lowered for w in ("failed", "timeout", "error", "cancelled", "blocked")):
-                self._chronicle.append(f"Attempted action did not succeed: {text[:100]}")
-                if len(self._chronicle) > _MAX_CHRONICLE_ENTRIES:
-                    self._chronicle = self._chronicle[-_MAX_CHRONICLE_ENTRIES:]
+                self._apply_reward(_PENALTY_OBSTACLE, "navigation failed")
+                entry = f"Action did not succeed: {text[:100]}"
+                self._chronicle.append(entry)
+                self._trim_chronicle()
+                self._last_event = entry
                 changed = True
 
         elif msg_type == "ai":

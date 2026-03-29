@@ -326,6 +326,20 @@ class McpClient(Module[McpClientConfig]):
                     if not self._state_graph:
                         raise ValueError("No state graph initialized")
                     self._process_message(self._state_graph, message)
+            except Exception as exc:
+                from openai import BadRequestError
+
+                if isinstance(exc, BadRequestError):
+                    logger.error(
+                        "BadRequestError from API — resetting history to recover.",
+                        exc_info=exc,
+                    )
+                    self._history = []
+                else:
+                    logger.error(
+                        "McpClient message processing failed — continuing.",
+                        exc_info=exc,
+                    )
             finally:
                 self._processing = False
 
@@ -380,17 +394,11 @@ class McpClient(Module[McpClientConfig]):
             self._history = _prune_think_exchanges(self._history)
         if self.config.max_history_messages is not None:
             history = self._history[-self.config.max_history_messages :]
-            # Walk forward until we reach a clean boundary: a HumanMessage or an
-            # AIMessage without pending tool calls. This prevents orphaning tool
-            # calls whose AI message was cut off by the slice, which causes
-            # BadRequestError: "tool_calls must be followed by tool messages".
-            while history:
-                first = history[0]
-                msg_type = getattr(first, "type", "")
-                if msg_type == "human":
-                    break
-                if msg_type == "ai" and not getattr(first, "tool_calls", []):
-                    break
+            # Advance to the first HumanMessage so the history always starts at
+            # a clean exchange boundary. Any leading ToolMessages or AIMessages
+            # sliced off from a prior exchange would cause BadRequestError:
+            # "tool_calls must be followed by tool messages".
+            while history and getattr(history[0], "type", "") != "human":
                 history = history[1:]
             self._history = history
 
