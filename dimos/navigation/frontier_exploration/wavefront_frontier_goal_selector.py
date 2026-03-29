@@ -821,6 +821,49 @@ class WavefrontFrontierExplorer(Module[WavefrontConfig]):
                     )
                     threading.Event().wait(2.0)
 
+    def _get_current_robot_pose(self) -> Vector3 | None:
+        if self.latest_odometry is None:
+            return None
+        return Vector3(
+            self.latest_odometry.position.x,
+            self.latest_odometry.position.y,
+            0.0,
+        )
+
+    def _compute_next_frontier_goal(self) -> Vector3 | None:
+        if self.latest_costmap is None or self.latest_odometry is None:
+            return None
+        robot_pose = self._get_current_robot_pose()
+        if robot_pose is None:
+            return None
+        costmap = simple_inflate(self.latest_costmap, 0.25)
+        return self.get_exploration_goal(robot_pose, costmap)
+
+    def _peek_next_frontier_goal(self) -> Vector3 | None:
+        if self.latest_costmap is None or self.latest_odometry is None:
+            return None
+        robot_pose = self._get_current_robot_pose()
+        if robot_pose is None:
+            return None
+        costmap = simple_inflate(self.latest_costmap, 0.25)
+        frontiers = self.detect_frontiers(robot_pose, costmap)
+        if not frontiers:
+            return None
+        return frontiers[0]
+
+    def _publish_frontier_goal(self, goal: Vector3) -> None:
+        assert self.latest_costmap is not None
+        goal_msg = PoseStamped()
+        goal_msg.position.x = goal.x
+        goal_msg.position.y = goal.y
+        goal_msg.position.z = 0.0
+        goal_msg.orientation.w = 1.0
+        goal_msg.frame_id = "world"
+        goal_msg.ts = self.latest_costmap.ts
+        self.goal_request.publish(goal_msg)
+        self.goal_reached_event.clear()
+        logger.info(f"Published frontier goal: ({goal.x:.2f}, {goal.y:.2f})")
+
     @skill
     def begin_exploration(self) -> str:
         """Command the robot to move around and explore the area. Cancelled with end_exploration."""
@@ -840,3 +883,49 @@ class WavefrontFrontierExplorer(Module[WavefrontConfig]):
             return "Stopped exploration. The robot has stopped moving."
         else:
             return "Exploration skill was not active, so nothing was stopped."
+
+    @skill
+    def exploration_status(self) -> str:
+        """Return the current frontier-exploration status and latest known pose."""
+        pose = self._get_current_robot_pose()
+        pose_text = (
+            f"({pose.x:.2f}, {pose.y:.2f})" if pose is not None else "unknown"
+        )
+        return (
+            f"exploration_active={self.exploration_active}, "
+            f"explored_goals={len(self.explored_goals)}, "
+            f"no_gain_counter={self.no_gain_counter}, "
+            f"latest_pose={pose_text}"
+        )
+
+    @skill
+    def preview_next_frontier(self) -> str:
+        """Preview the best next frontier goal without starting continuous exploration."""
+        goal = self._peek_next_frontier_goal()
+        if goal is None:
+            return (
+                "No frontier is currently available, or costmap/odometry data has not arrived yet."
+            )
+        return f"Best frontier is at ({goal.x:.2f}, {goal.y:.2f})."
+
+    @skill
+    def step_exploration_once(self) -> str:
+        """Pick one frontier goal and publish it once without enabling continuous exploration."""
+        if self.exploration_active:
+            return (
+                "Continuous exploration is already active. Use end_exploration before stepping "
+                "manually."
+            )
+
+        goal = self._compute_next_frontier_goal()
+        if goal is None:
+            return (
+                "Unable to choose a frontier goal right now. Costmap/odometry may be missing, "
+                "or there may be no useful frontier available."
+            )
+
+        self._publish_frontier_goal(goal)
+        return (
+            f"Published one frontier goal at ({goal.x:.2f}, {goal.y:.2f}). "
+            "Navigation is now responsible for executing that step."
+        )

@@ -28,6 +28,7 @@ from dimos.utils.logging_config import setup_logger
 logger = setup_logger()
 
 AUTONOMY_PREFIX = "[AUTONOMY]"
+STATUS_PREFIX = "[STATUS]"
 
 
 class AutonomyLoop(Module):
@@ -108,7 +109,7 @@ class AutonomyLoop(Module):
 
         with self._lock:
             if msg_type == "human":
-                if not text.startswith(AUTONOMY_PREFIX):
+                if not text.startswith(AUTONOMY_PREFIX) and not text.startswith(STATUS_PREFIX):
                     self._last_external_human_at = now
                     self._pending_followup = False
                     self._idle_followup_due_at = None

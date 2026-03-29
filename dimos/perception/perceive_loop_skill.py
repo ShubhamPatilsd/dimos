@@ -166,7 +166,9 @@ class PerceiveLoopSkill(Module):
 
         if then is None:
             self._agent_spec.add_message(
-                HumanMessage(f"Found a match for {active_lookout_str}. Please announce audibly.")
+                HumanMessage(
+                    f"Found a match for {active_lookout_str}. Reassess the situation and decide the next action."
+                )
             )
             return
 

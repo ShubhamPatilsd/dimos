@@ -82,6 +82,7 @@ comma_body_agentic_duet = autoconnect(
 ).remappings(
     [
         (McpClient, "agent", "comma_body_agent"),
+        (AutonomyLoop, "agent", "comma_body_agent"),
         (WebInput, "agent", "comma_body_agent"),
     ]
 ).global_config(mcp_port=9991)

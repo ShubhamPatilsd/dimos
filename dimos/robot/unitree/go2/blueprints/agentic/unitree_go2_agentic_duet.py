@@ -30,6 +30,7 @@ the Comma Body agent via ``/comma_body/human_input``.
 """
 
 from dimos.agents.autonomy_loop import AutonomyLoop
+from dimos.agents.go2_status_bridge import Go2StatusBridge
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
@@ -55,6 +56,7 @@ unitree_go2_agentic_duet = autoconnect(
     NavigationSkillContainer.blueprint(),
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
     UnitreeSkillContainer.blueprint(),
+    Go2StatusBridge.blueprint(),
     AutonomyLoop.blueprint(
         human_input_topic="/go2/human_input",
         boot_prompt=(
@@ -81,6 +83,7 @@ unitree_go2_agentic_duet = autoconnect(
 ).remappings(
     [
         (McpClient, "agent", "go2_agent"),
+        (AutonomyLoop, "agent", "go2_agent"),
         (WebInput, "agent", "go2_agent"),
     ]
 )

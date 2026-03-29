@@ -29,6 +29,7 @@ import uvicorn
 from dimos.agents.annotation import skill
 from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.duet_dashboard import duet_dashboard
+from dimos.agents.go2_status_bridge import Go2StatusBridge
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer, handle_request
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
@@ -85,6 +86,10 @@ class CommaBodyWebInput(WebInput):
 
 class Go2AutonomyLoop(AutonomyLoop):
     """Go2-specific autonomy loop."""
+
+
+class CombinedGo2StatusBridge(Go2StatusBridge):
+    """Go2-specific status bridge for the combined blueprint."""
 
 
 class CommaBodyAutonomyLoop(AutonomyLoop):
@@ -239,6 +244,7 @@ go2_allowed_classes = _allowed_classes(
         NavigationSkillContainer,
         PersonFollowSkillContainer,
         UnitreeSkillContainer,
+        CombinedGo2StatusBridge,
         Go2AutonomyLoop,
         Go2InterAgentSkill,
         Go2WebInput,
@@ -273,6 +279,7 @@ duet_combined = autoconnect(
     NavigationSkillContainer.blueprint(),
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
     UnitreeSkillContainer.blueprint(),
+    CombinedGo2StatusBridge.blueprint(),
     Go2AutonomyLoop.blueprint(
         human_input_topic="/go2/human_input",
         boot_prompt=(
@@ -335,11 +342,15 @@ duet_combined = autoconnect(
 ).remappings(
     [
         (Go2McpClient, "agent", "go2_agent"),
+        (Go2AutonomyLoop, "agent", "go2_agent"),
         (Go2WebInput, "agent", "go2_agent"),
         (Go2McpClient, "agent_idle", "go2_agent_idle"),
+        (Go2AutonomyLoop, "agent_idle", "go2_agent_idle"),
         (CommaBodyMcpClient, "agent", "comma_body_agent"),
+        (CommaBodyAutonomyLoop, "agent", "comma_body_agent"),
         (CommaBodyWebInput, "agent", "comma_body_agent"),
         (CommaBodyMcpClient, "agent_idle", "comma_body_agent_idle"),
+        (CommaBodyAutonomyLoop, "agent_idle", "comma_body_agent_idle"),
     ]
 )
 
