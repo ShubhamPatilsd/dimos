@@ -51,9 +51,7 @@ unitree_go2_agentic_duet = autoconnect(
     McpClient.blueprint(
         human_input_topic="/go2/human_input",
         system_prompt=GO2_DUET_SYSTEM_PROMPT,
-        model="Qwen/Qwen2.5-VL-7B-Instruct",
-        model_base_url="http://100.94.67.9:8000/v1",
-        model_api_key="EMPTY",
+        model="gpt-5.4-mini",
     ),
     NavigationSkillContainer.blueprint(),
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
@@ -62,18 +60,18 @@ unitree_go2_agentic_duet = autoconnect(
     AutonomyLoop.blueprint(
         human_input_topic="/go2/human_input",
         boot_prompt=(
-            "Internal executive boot. Choose exactly one safe next concrete action. Prefer "
-            "preview_next_frontier and step_exploration_once over begin_exploration. Do not "
-            "reply conversationally unless a human explicitly needs an answer."
+            "Internal executive boot. Call exactly one tool now, or stay silent if no tool is "
+            "appropriate. Do not answer in plain English. Prefer preview_next_frontier and "
+            "step_exploration_once over begin_exploration."
         ),
         followup_prompt=(
-            "Internal executive step. Reflect on what just happened and choose exactly one next "
-            "safe concrete action. Prefer deliberate stepwise control over autopilot. If no "
-            "action is needed, stay silent."
+            "Internal executive step. Call exactly one tool now, or stay silent if no tool is "
+            "appropriate. Do not answer in plain English. Prefer deliberate stepwise control "
+            "over autopilot."
         ),
         idle_prompt=(
-            "Internal executive idle. Reassess the current objective and choose at most one safe "
-            "next concrete action. Prefer stepwise control. If waiting is best, stay silent."
+            "Internal executive idle. Either call exactly one tool now or stay silent. Do not "
+            "answer in plain English. Prefer stepwise control."
         ),
     ),
     InterAgentSkill.blueprint(

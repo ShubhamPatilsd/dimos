@@ -54,26 +54,23 @@ comma_body_agentic_duet = autoconnect(
         mcp_server_url="http://localhost:9991/mcp",
         human_input_topic="/comma_body/human_input",
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
-        model="Qwen/Qwen2.5-VL-7B-Instruct",
-        model_base_url="http://100.94.67.9:8000/v1",
-        model_api_key="EMPTY",
+        model="gpt-5.4-mini",
     ),
     CommaBodySkillContainer.blueprint(),
     AutonomyLoop.blueprint(
         human_input_topic="/comma_body/human_input",
         boot_prompt=(
-            "Internal executive boot. Choose exactly one safe next concrete action that fits a "
-            "wheeled robot. Do not reply conversationally unless a human explicitly needs an "
-            "answer."
+            "Internal executive boot. Call exactly one tool now, or stay silent if no tool is "
+            "appropriate. Do not answer in plain English."
         ),
         followup_prompt=(
-            "Internal executive step. Reflect on what just happened and choose exactly one next "
-            "safe concrete action. If Daneel should know something, use message_peer. If no "
-            "action is needed, stay silent."
+            "Internal executive step. Call exactly one tool now, or stay silent if no tool is "
+            "appropriate. Do not answer in plain English. If Daneel should know something, use "
+            "message_peer."
         ),
         idle_prompt=(
-            "Internal executive idle. Decide whether one safe concrete action is warranted. If "
-            "waiting is best, stay silent."
+            "Internal executive idle. Either call exactly one tool now or stay silent. Do not "
+            "answer in plain English."
         ),
     ),
     InterAgentSkill.blueprint(
