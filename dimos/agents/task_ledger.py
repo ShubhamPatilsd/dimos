@@ -202,6 +202,7 @@ _REWARD_FIELD_NOTE = 1
 _PENALTY_OBSTACLE = -3
 _PENALTY_STAGNATION = -2
 _PENALTY_REVISIT = -1
+_PENALTY_IDLE = -1
 
 
 def _grid_cell(x: float, y: float) -> tuple[int, int]:
@@ -419,6 +420,10 @@ class NarrativeLedger(Module):
                 if tool_name not in {"get_task_ledger", "update_task_ledger", "think"}:
                     self._subgoal = f"Execute {tool_name}"
                     changed = True
+            elif text:
+                # Agent produced plain text instead of acting — penalize idleness
+                self._apply_reward(_PENALTY_IDLE, "idle — talk less, move more")
+                changed = True
 
         if changed:
             self._publish_summary()
