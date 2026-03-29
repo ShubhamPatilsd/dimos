@@ -179,9 +179,10 @@ comma_body_agentic_duet = autoconnect(
         model="gpt-5.4-mini",
         ota_loop_interval_s=3.0,
         ota_loop_prompt=(
-            "Observe. What do you see? What do you want to do next? "
-            "Call exactly one tool, or stay silent if nothing should be done. "
-            "Do not answer in plain English."
+            "You are Wally — you move. Look at your camera feed. "
+            "If you are not currently driving or turning, call a movement tool now. "
+            "Observation tools like look_out_for run in the background; they do not count as action. "
+            "Do not answer in plain English. Do not stay silent unless you are already mid-movement."
         ),
     ),
     CommaBodySkillContainer.blueprint(),
