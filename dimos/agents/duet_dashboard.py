@@ -132,6 +132,6 @@ class DuetDashboard(Module[DuetDashboardConfig]):
         return f"[{name} {msg_type}] {text}" if text else f"[{name} {msg_type}]"
 
 
-duet_dashboard = DuetDashboard.blueprint
+duet_dashboard = DuetDashboard.blueprint()
 
 __all__ = ["duet_dashboard"]
