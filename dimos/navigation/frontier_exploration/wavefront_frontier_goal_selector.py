@@ -866,7 +866,16 @@ class WavefrontFrontierExplorer(Module[WavefrontConfig]):
 
     @skill
     def begin_exploration(self) -> str:
-        """Command the robot to move around and explore the area. Cancelled with end_exploration."""
+        """Start continuous background frontier exploration.
+
+        This hands control to the frontier-exploration loop, which will keep
+        choosing frontiers and publishing navigation goals on its own.
+
+        Use this only when you explicitly want autopilot-style background
+        exploration. If you want deliberate, step-by-step behavior that stays
+        tightly coupled to your own reasoning, prefer `preview_next_frontier`,
+        `step_exploration_once`, and then reassess.
+        """
         started = self.explore()
         if not started:
             return "Exploration skill is already active. Use end_exploration to stop before starting again."
@@ -900,7 +909,11 @@ class WavefrontFrontierExplorer(Module[WavefrontConfig]):
 
     @skill
     def preview_next_frontier(self) -> str:
-        """Preview the best next frontier goal without starting continuous exploration."""
+        """Preview the best next frontier goal without starting background exploration.
+
+        Use this when you want to reason explicitly about the next frontier
+        before deciding whether to step toward it.
+        """
         goal = self._peek_next_frontier_goal()
         if goal is None:
             return (
@@ -910,7 +923,14 @@ class WavefrontFrontierExplorer(Module[WavefrontConfig]):
 
     @skill
     def step_exploration_once(self) -> str:
-        """Pick one frontier goal and publish it once without enabling continuous exploration."""
+        """Take exactly one deliberate frontier-exploration step.
+
+        This chooses the current best frontier and publishes a single goal
+        without enabling the continuous background exploration loop.
+
+        Prefer this over `begin_exploration` when you want step-by-step agentic
+        control with frequent reassessment after each move.
+        """
         if self.exploration_active:
             return (
                 "Continuous exploration is already active. Use end_exploration before stepping "

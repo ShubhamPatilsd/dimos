@@ -54,24 +54,26 @@ comma_body_agentic_duet = autoconnect(
         mcp_server_url="http://localhost:9991/mcp",
         human_input_topic="/comma_body/human_input",
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
-        model="gpt-4.1-mini",
+        model="Qwen/Qwen2.5-VL-7B-Instruct",
+        model_base_url="http://100.94.67.9:8000/v1",
+        model_api_key="EMPTY",
     ),
     CommaBodySkillContainer.blueprint(),
     AutonomyLoop.blueprint(
         human_input_topic="/comma_body/human_input",
         boot_prompt=(
-            "Boot complete. You are Wally. Lean into your own curious, mobile character and pick "
-            "a safe objective that fits a wheeled robot. Do not speak aloud. Stay observant and "
-            "coordinate with Daneel when useful."
+            "Internal executive boot. Choose exactly one safe next concrete action that fits a "
+            "wheeled robot. Do not reply conversationally unless a human explicitly needs an "
+            "answer."
         ),
         followup_prompt=(
-            "Continue autonomously. Reflect on what just happened, keep your current objective in "
-            "mind, and choose the next safe concrete action. If Daneel should know something, use "
-            "message_peer."
+            "Internal executive step. Reflect on what just happened and choose exactly one next "
+            "safe concrete action. If Daneel should know something, use message_peer. If no "
+            "action is needed, stay silent."
         ),
         idle_prompt=(
-            "You have been idle. Build on your recent experience, decide what you want to inspect "
-            "or accomplish next, and choose a safe next action. Do not speak aloud."
+            "Internal executive idle. Decide whether one safe concrete action is warranted. If "
+            "waiting is best, stay silent."
         ),
     ),
     InterAgentSkill.blueprint(

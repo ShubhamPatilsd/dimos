@@ -42,6 +42,8 @@ logger = setup_logger()
 class McpClientConfig(ModuleConfig):
     system_prompt: str | None = SYSTEM_PROMPT
     model: str = "gpt-4o"
+    model_base_url: str | None = None
+    model_api_key: str | None = None
     model_fixture: str | None = None
     mcp_server_url: str = "http://localhost:9990/mcp"
     human_input_topic: str = "/human_input"
@@ -182,6 +184,14 @@ class McpClient(Module[McpClientConfig]):
             from dimos.agents.testing import MockModel
 
             model = MockModel(json_path=self.config.model_fixture)
+        elif self.config.model_base_url is not None:
+            from langchain_openai import ChatOpenAI
+
+            model = ChatOpenAI(
+                model=self.config.model,
+                base_url=self.config.model_base_url,
+                api_key=self.config.model_api_key or "EMPTY",
+            )
 
         with self._lock:
             self._state_graph = create_agent(
