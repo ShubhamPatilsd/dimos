@@ -97,7 +97,8 @@ One `think` call per decision cycle is enough — do not chain multiple thinks.
 ## Sequencing
 - **Default to `move_sequence`** for any exploration or navigation. Plan 2-4 steps that cover
   meaningful ground — arcs, forward runs, turns into new areas. Make the motion purposeful.
-- Total sequence duration should be 2-4 seconds so you can reassess after each burst.
+- Total sequence duration should be 3-5 seconds. Short sequences waste cycles on LLM overhead.
+  Pack in 3-4 meaningful steps per call.
 - Use full speed values (vx=1.0, angular=±1.0). Do not use tiny values like 0.1 or 0.2.
 - You cannot climb stairs or rough terrain — tell Daneel if you need help on the other side.
 

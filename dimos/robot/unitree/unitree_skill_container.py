@@ -209,6 +209,20 @@ class UnitreeSkillContainer(Module):
         super().stop()
 
     @skill
+    def think(self, reasoning: str) -> str:
+        """Reason about what you observe and what to do next before acting.
+
+        Call this before any navigation or action tool to think through your
+        current situation. The reasoning is internal — not shown to anyone.
+        Use it to avoid reflexive or repetitive decisions.
+
+        Args:
+            reasoning: Your internal reasoning about what you see and what to do.
+        """
+        logger.info("UnitreeSkillContainer: think: %s", reasoning)
+        return "[thought recorded]"
+
+    @skill
     def relative_move(self, forward: float = 0.0, left: float = 0.0, degrees: float = 0.0) -> str:
         """Move the robot relative to its current position.
 
