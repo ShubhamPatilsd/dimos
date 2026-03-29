@@ -48,7 +48,6 @@ from starlette.requests import Request
 from starlette.responses import Response
 import uvicorn
 
-from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer, handle_request
 from dimos.agents.task_ledger import TaskLedger
@@ -159,7 +158,6 @@ def _allowed_classes() -> tuple[str, ...]:
             "McpClient",
             "CommaBodySkillContainer",
             "TaskLedger",
-            "AutonomyLoop",
             "InterAgentSkill",
             "WebInput",
         ]
@@ -179,25 +177,15 @@ comma_body_agentic_duet = autoconnect(
         human_input_topic="/comma_body/human_input",
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
         model="gpt-5.4-mini",
+        ota_loop_interval_s=3.0,
+        ota_loop_prompt=(
+            "Observe. What do you see? What do you want to do next? "
+            "Call exactly one tool, or stay silent if nothing should be done. "
+            "Do not answer in plain English."
+        ),
     ),
     CommaBodySkillContainer.blueprint(),
     TaskLedger.blueprint(),
-    AutonomyLoop.blueprint(
-        human_input_topic="/comma_body/human_input",
-        boot_prompt=(
-            "Internal executive boot. Call exactly one tool now, or stay silent if no tool is "
-            "appropriate. Do not answer in plain English."
-        ),
-        followup_prompt=(
-            "Internal executive step. Call exactly one tool now, or stay silent if no tool is "
-            "appropriate. Do not answer in plain English. If Daneel should know something, use "
-            "message_peer."
-        ),
-        idle_prompt=(
-            "Internal executive idle. Either call exactly one tool now or stay silent. Do not "
-            "answer in plain English."
-        ),
-    ),
     InterAgentSkill.blueprint(
         peer_topic="/go2/human_input",
         peer_name="Daneel (Go2)",
@@ -207,7 +195,6 @@ comma_body_agentic_duet = autoconnect(
     [
         (McpClient, "agent", "comma_body_agent"),
         (TaskLedger, "agent", "comma_body_agent"),
-        (AutonomyLoop, "agent", "comma_body_agent"),
         (WebInput, "agent", "comma_body_agent"),
     ]
 )

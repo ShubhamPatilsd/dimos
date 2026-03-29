@@ -53,6 +53,11 @@ class McpClientConfig(ModuleConfig):
     latest_image_max_width: int = 512
     latest_image_max_height: int = 288
     latest_image_quality: int = 60
+    ota_loop_interval_s: float | None = None
+    ota_loop_prompt: str = (
+        "Observe. What do you see? What do you want to do next? "
+        "Call exactly one tool, or stay silent if nothing should be done."
+    )
 
 
 class McpClient(Module[McpClientConfig]):
@@ -68,10 +73,12 @@ class McpClient(Module[McpClientConfig]):
     _tool_registry: dict[str, dict[str, Any]]
     _history: list[BaseMessage]
     _thread: Thread
+    _ota_thread: Thread | None
     _stop_event: Event
     _http_client: httpx.Client
     _seq_ids: SequentialIds
     _latest_image: Image | None
+    _processing: bool
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -89,6 +96,8 @@ class McpClient(Module[McpClientConfig]):
         self._http_client = httpx.Client(timeout=120.0)
         self._seq_ids = SequentialIds()
         self._latest_image = None
+        self._ota_thread = None
+        self._processing = False
 
     def __reduce__(self) -> Any:
         return (self.__class__, (), {})
@@ -212,12 +221,21 @@ class McpClient(Module[McpClientConfig]):
                 system_prompt=self.config.system_prompt,
             )
             self._thread.start()
+            if self.config.ota_loop_interval_s is not None:
+                self._ota_thread = Thread(
+                    target=self._ota_drive_loop,
+                    name=f"{self.__class__.__name__}-ota-thread",
+                    daemon=True,
+                )
+                self._ota_thread.start()
 
     @rpc
     def stop(self) -> None:
         self._stop_event.set()
         if self._thread.is_alive():
             self._thread.join(timeout=2.0)
+        if self._ota_thread is not None and self._ota_thread.is_alive():
+            self._ota_thread.join(timeout=2.0)
         self._http_client.close()
         super().stop()
 
@@ -291,10 +309,31 @@ class McpClient(Module[McpClientConfig]):
             except Empty:
                 continue
 
-            with self._lock:
-                if not self._state_graph:
-                    raise ValueError("No state graph initialized")
-                self._process_message(self._state_graph, message)
+            self._processing = True
+            try:
+                with self._lock:
+                    if not self._state_graph:
+                        raise ValueError("No state graph initialized")
+                    self._process_message(self._state_graph, message)
+            finally:
+                self._processing = False
+
+    def _ota_drive_loop(self) -> None:
+        """Self-drive loop: fire an observe-think-act tick at a fixed cadence.
+
+        Only enqueues a tick when the agent is idle and the queue is empty,
+        so it never piles up behind a slow LLM call.
+        """
+        interval = self.config.ota_loop_interval_s
+        assert interval is not None
+        while not self._stop_event.is_set():
+            self._stop_event.wait(interval)
+            if self._stop_event.is_set():
+                break
+            if not self._processing and self._message_queue.empty():
+                self._message_queue.put(
+                    HumanMessage(content=self.config.ota_loop_prompt)
+                )
 
     def _process_message(
         self, state_graph: CompiledStateGraph[Any, Any, Any, Any], message: BaseMessage
