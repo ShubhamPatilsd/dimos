@@ -47,7 +47,12 @@ def get_module_by_name(name: str) -> Blueprint:
         _fail_unknown(name, list(all_modules.keys()))
     attr_name = name.replace("-", "_")
     python_module = __import__(all_modules[name], fromlist=[attr_name])
-    return getattr(python_module, attr_name)()  # type: ignore[no-any-return]
+    obj = getattr(python_module, attr_name, None)
+    if obj is None:
+        # Fall back to CamelCase class name when no snake_case alias is exported
+        camel = "".join(word.capitalize() for word in attr_name.split("_"))
+        obj = getattr(python_module, camel).blueprint
+    return obj()  # type: ignore[no-any-return]
 
 
 def get_by_name(name: str) -> Blueprint:
