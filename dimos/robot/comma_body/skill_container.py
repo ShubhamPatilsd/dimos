@@ -33,6 +33,7 @@ The Comma Body already connects to the DGX Zenoh router at startup
 subscribes to without extra config.
 """
 
+import math
 import struct
 import time
 import threading
@@ -59,6 +60,13 @@ _STOP_HOLD: float = 0.2
 
 # Command loop rate (Hz)
 _CMD_HZ: float = 20.0
+
+# Closed-loop body navigation tuning
+_KP_STEER: float = 1.5
+_KP_SPEED: float = 2.0
+_ARRIVAL_THRESHOLD_M: float = 0.3
+_SLOWDOWN_RADIUS_M: float = 1.0
+_TURN_IN_PLACE_THRESH_RAD: float = math.radians(45.0)
 
 
 def _encode_joystick(lon: float, lat: float) -> bytes:
@@ -156,9 +164,100 @@ class CommaBodySkillContainer(Module):
         self._send_stop()
         time.sleep(_STOP_HOLD)
 
+    def _current_pose_world(self):  # type: ignore[no-untyped-def]
+        tf = self.tf.get("world", "base_link")
+        if tf is None:
+            return None
+        return tf.to_pose()
+
+    def _compute_goal_command(
+        self, current_x: float, current_y: float, current_theta: float, goal_x: float, goal_y: float
+    ) -> tuple[float, float, bool]:
+        dx = goal_x - current_x
+        dy = goal_y - current_y
+        distance = math.sqrt(dx * dx + dy * dy)
+
+        if distance < _ARRIVAL_THRESHOLD_M:
+            return 0.0, 0.0, True
+
+        target_bearing = math.atan2(dy, dx)
+        heading_error = target_bearing - current_theta
+        heading_error = (heading_error + math.pi) % (2 * math.pi) - math.pi
+
+        steer = -_KP_STEER * heading_error
+        steer = max(-1.0, min(1.0, steer))
+
+        if abs(heading_error) > _TURN_IN_PLACE_THRESH_RAD:
+            steer = -1.0 if heading_error > 0 else 1.0
+            return 0.0, steer, False
+
+        speed = min(_KP_SPEED * distance, _MAX_SPEED)
+        if distance < _SLOWDOWN_RADIUS_M:
+            speed = (_MAX_SPEED - 0.05) * (distance / _SLOWDOWN_RADIUS_M) + 0.05
+
+        return speed, steer, False
+
+    def _go_to_world(self, goal_x: float, goal_y: float, timeout: float) -> str:
+        timeout = max(0.1, float(timeout))
+        deadline = time.monotonic() + timeout
+        interval = 1.0 / _CMD_HZ
+
+        while time.monotonic() < deadline:
+            pose = self._current_pose_world()
+            if pose is None:
+                self._send_stop()
+                return "Navigation failed: no current pose available."
+
+            yaw = pose.orientation.to_euler().yaw
+            speed, steer, arrived = self._compute_goal_command(
+                pose.x, pose.y, yaw, goal_x, goal_y
+            )
+            if arrived:
+                self._send_stop()
+                return f"Arrived at ({goal_x:.2f}, {goal_y:.2f})."
+
+            self._send(speed, steer)
+            time.sleep(interval)
+
+        self._send_stop()
+        return f"Navigation timed out before reaching ({goal_x:.2f}, {goal_y:.2f})."
+
     # ------------------------------------------------------------------
     # Skills
     # ------------------------------------------------------------------
+
+    @skill
+    def command_velocity(self, vx: float, angular: float, duration: float) -> str:
+        """Apply a direct joystick-style velocity command for a fixed duration.
+
+        This is the most precise movement primitive for the Comma Body in this
+        stack. It maps directly onto the remote joystick bridge:
+
+        - `vx`: normalized forward/backward command. Positive = forward.
+        - `angular`: normalized left/right turn command. Positive = left.
+
+        Both values are clamped to the range [-1.0, 1.0].
+
+        Args:
+            vx: Normalized forward/backward command. Positive = forward.
+            angular: Normalized turn command. Positive = left, negative = right.
+            duration: How long to apply the command in seconds.
+        """
+        vx = float(vx)
+        angular = float(angular)
+        duration = float(duration)
+        logger.info(
+            "CommaBodySkillContainer: command_velocity vx=%.2f angular=%.2f duration=%.2fs",
+            vx,
+            angular,
+            duration,
+        )
+        try:
+            self._run_loop(vx, angular, duration)
+        except Exception as e:
+            self._send_stop()
+            return f"Velocity command failed: {e}"
+        return f"Applied velocity command vx={vx:.2f}, angular={angular:.2f} for {duration:.2f}s"
 
     @skill
     def drive(self, speed: float, duration: float) -> str:
@@ -169,15 +268,41 @@ class CommaBodySkillContainer(Module):
                 negative = backward. Range -1.0 to 1.0.
             duration: How long to drive in seconds.
         """
-        speed = float(speed)
-        duration = float(duration)
-        logger.info("CommaBodySkillContainer: drive speed=%.2f duration=%.1fs", speed, duration)
-        try:
-            self._run_loop(speed, 0.0, duration)
-        except Exception as e:
-            self._send_stop()
-            return f"Drive failed: {e}"
-        return f"Drove at speed={speed:.2f} for {duration:.1f}s"
+        return self.command_velocity(vx=float(speed), angular=0.0, duration=float(duration))
+
+    @skill
+    def go_to_relative(self, forward: float, left: float, timeout: float = 30.0) -> str:
+        """Drive to a relative 2D goal using closed-loop pose feedback.
+
+        This is preferable to timed velocity commands when you want the body to
+        reach a point instead of just moving for a duration.
+
+        Args:
+            forward: Goal offset in meters in front of the robot. Negative = behind.
+            left: Goal offset in meters to the robot's left. Negative = right.
+            timeout: Maximum time to spend trying to reach the goal.
+        """
+        pose = self._current_pose_world()
+        if pose is None:
+            return "Navigation failed: no current pose available."
+
+        local_dx = float(forward)
+        local_dy = float(left)
+        yaw = pose.orientation.to_euler().yaw
+        goal_x = pose.x + local_dx * math.cos(yaw) - local_dy * math.sin(yaw)
+        goal_y = pose.y + local_dx * math.sin(yaw) + local_dy * math.cos(yaw)
+        return self._go_to_world(goal_x, goal_y, timeout)
+
+    @skill
+    def go_to_absolute(self, x: float, y: float, timeout: float = 30.0) -> str:
+        """Drive to an absolute 2D world-coordinate goal using closed-loop pose feedback.
+
+        Args:
+            x: Target world x coordinate in meters.
+            y: Target world y coordinate in meters.
+            timeout: Maximum time to spend trying to reach the goal.
+        """
+        return self._go_to_world(float(x), float(y), float(timeout))
 
     @skill
     def turn(self, degrees: float) -> str:

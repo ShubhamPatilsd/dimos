@@ -66,12 +66,20 @@ Daneel or by taking the requested action.
 # SKILL COORDINATION
 
 ## Movement
+- `go_to_relative(forward, left, timeout)`: Closed-loop movement to a nearby point in the robot's
+  local frame. Prefer this over timed motion when you want to reach a spot.
+- `go_to_absolute(x, y, timeout)`: Closed-loop movement to an absolute world coordinate if you
+  already know the target coordinates.
+- `command_velocity(vx, angular, duration)`: Most precise motion primitive. Positive `vx` drives
+  forward. Positive `angular` turns left. Use this for careful maneuvers.
 - `drive(speed, duration)`: Drive forward (positive speed) or backward (negative speed).
   Speed is a fraction of max speed (-1.0 to 1.0). Duration in seconds.
 - `turn(degrees)`: Turn in place. Positive = left, negative = right.
 - `stop_moving`: Emergency stop. Use immediately if something is wrong.
 
 ## Sequencing
+- Prefer `go_to_relative` or `go_to_absolute` for actually reaching a target location.
+- Prefer `command_velocity` for fine control, tight spaces, and short deliberate motions.
 - Chain `drive` and `turn` calls to navigate: e.g., turn to face a direction, then drive forward.
 - After a turn, briefly pause in your narration before driving so the motion completes.
 - You cannot climb stairs or rough terrain — tell Daneel if you need help on the other side.

@@ -33,6 +33,7 @@ from dimos.core.module import Module, ModuleConfig
 from dimos.core.rpc_client import RPCClient
 from dimos.core.stream import In, Out
 from dimos.core.transport import pLCMTransport
+from dimos.msgs.sensor_msgs.Image import Image
 from dimos.utils.logging_config import setup_logger
 from dimos.utils.sequential_ids import SequentialIds
 
@@ -47,12 +48,18 @@ class McpClientConfig(ModuleConfig):
     model_fixture: str | None = None
     mcp_server_url: str = "http://localhost:9990/mcp"
     human_input_topic: str = "/human_input"
+    include_latest_image_by_default: bool = True
+    latest_image_max_age_s: float = 3.0
+    latest_image_max_width: int = 512
+    latest_image_max_height: int = 288
+    latest_image_quality: int = 60
 
 
 class McpClient(Module[McpClientConfig]):
     default_config = McpClientConfig
     agent: Out[BaseMessage]
     human_input: In[str]
+    color_image: In[Image]
     agent_idle: Out[bool]
 
     _lock: RLock
@@ -64,6 +71,7 @@ class McpClient(Module[McpClientConfig]):
     _stop_event: Event
     _http_client: httpx.Client
     _seq_ids: SequentialIds
+    _latest_image: Image | None
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -80,6 +88,7 @@ class McpClient(Module[McpClientConfig]):
         self._stop_event = Event()
         self._http_client = httpx.Client(timeout=120.0)
         self._seq_ids = SequentialIds()
+        self._latest_image = None
 
     def __reduce__(self) -> Any:
         return (self.__class__, (), {})
@@ -171,8 +180,12 @@ class McpClient(Module[McpClientConfig]):
         def _on_human_input(string: str) -> None:
             self._message_queue.put(HumanMessage(content=string))
 
+        def _on_color_image(image: Image) -> None:
+            self._latest_image = image
+
         transport: pLCMTransport[str] = pLCMTransport(self.config.human_input_topic)
         self._disposables.add(Disposable(transport.subscribe(_on_human_input)))
+        self._disposables.add(Disposable(self.color_image.subscribe(_on_color_image)))
 
     @rpc
     def on_system_modules(self, _modules: list[RPCClient]) -> None:
@@ -295,7 +308,10 @@ class McpClient(Module[McpClientConfig]):
         pretty_print_langchain_message(message)
         self.agent.publish(message)
 
-        for update in state_graph.stream({"messages": self._history}, stream_mode="updates"):
+        for update in state_graph.stream(
+            {"messages": self._history + self._runtime_context_messages()},
+            stream_mode="updates",
+        ):
             for node_output in update.values():
                 for msg in node_output.get("messages", []):
                     if _should_skip_message(msg):
@@ -306,6 +322,46 @@ class McpClient(Module[McpClientConfig]):
 
         if self._message_queue.empty():
             self.agent_idle.publish(True)
+
+    def _runtime_context_messages(self) -> list[BaseMessage]:
+        if not self.config.include_latest_image_by_default:
+            return []
+
+        latest_image = self._latest_image
+        if latest_image is None:
+            return []
+
+        age_s = time.time() - latest_image.ts
+        if age_s > self.config.latest_image_max_age_s:
+            return []
+
+        return [
+            HumanMessage(
+                additional_kwargs={"internal_message_type": "vision_context"},
+                content=[
+                    {
+                        "type": "text",
+                        "text": (
+                            "[VISION] Latest live camera frame. This image is transient context "
+                            "for the current decision only. Do not describe it to the user unless relevant."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": (
+                                "data:image/jpeg;base64,"
+                                + latest_image.to_base64(
+                                    quality=self.config.latest_image_quality,
+                                    max_width=self.config.latest_image_max_width,
+                                    max_height=self.config.latest_image_max_height,
+                                )
+                            )
+                        },
+                    },
+                ],
+            )
+        ]
 
 
 def _append_image_to_history(
