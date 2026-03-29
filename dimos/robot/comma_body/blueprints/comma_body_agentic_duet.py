@@ -178,6 +178,9 @@ comma_body_agentic_duet = autoconnect(
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
         model="gpt-5.4-mini",
         ota_loop_interval_s=1.0,
+        max_history_messages=40,
+        prune_think_exchanges=True,
+        latest_image_inject_interval_s=8.0,
         ota_loop_prompt=(
             "A live camera frame and your current world model are attached. "
             "Call `think` with: (1) what you see ahead, (2) what your world model says about "

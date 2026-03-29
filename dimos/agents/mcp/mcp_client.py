@@ -53,6 +53,9 @@ class McpClientConfig(ModuleConfig):
     latest_image_max_width: int = 512
     latest_image_max_height: int = 288
     latest_image_quality: int = 60
+    latest_image_inject_interval_s: float = 0.0
+    max_history_messages: int | None = None
+    prune_think_exchanges: bool = False
     ota_loop_interval_s: float | None = None
     ota_loop_prompt: str = (
         "Observe. What do you see? What do you want to do next? "
@@ -98,6 +101,7 @@ class McpClient(Module[McpClientConfig]):
         self._seq_ids = SequentialIds()
         self._latest_image = None
         self._latest_spatial_context: str | None = None
+        self._last_image_inject_ts: float = 0.0
         self._ota_thread = None
         self._processing = False
 
@@ -366,8 +370,16 @@ class McpClient(Module[McpClientConfig]):
                     pretty_print_langchain_message(msg)
                     self.agent.publish(msg)
 
+        self._trim_history()
+
         if self._message_queue.empty():
             self.agent_idle.publish(True)
+
+    def _trim_history(self) -> None:
+        if self.config.prune_think_exchanges:
+            self._history = _prune_think_exchanges(self._history)
+        if self.config.max_history_messages is not None:
+            self._history = self._history[-self.config.max_history_messages :]
 
     def _runtime_context_messages(self) -> list[BaseMessage]:
         if not self.config.include_latest_image_by_default:
@@ -380,6 +392,18 @@ class McpClient(Module[McpClientConfig]):
         age_s = time.time() - latest_image.ts
         if age_s > self.config.latest_image_max_age_s:
             return []
+
+        now = time.time()
+        if self.config.latest_image_inject_interval_s > 0:
+            if now - self._last_image_inject_ts < self.config.latest_image_inject_interval_s:
+                # Rate-limited: skip image but still return spatial context if available
+                if self._latest_spatial_context is not None:
+                    return [HumanMessage(
+                        additional_kwargs={"internal_message_type": "vision_context"},
+                        content=[{"type": "text", "text": self._latest_spatial_context}],
+                    )]
+                return []
+        self._last_image_inject_ts = now
 
         content: list[dict] = [
             {
@@ -437,6 +461,32 @@ def _append_image_to_history(
             ]
         )
     )
+
+
+def _prune_think_exchanges(history: list[BaseMessage]) -> list[BaseMessage]:
+    """Remove think tool call + result pairs from history to save tokens.
+
+    A think exchange is: an AI message whose only tool call is 'think',
+    followed immediately by the tool result message '[thought recorded]'.
+    These are pure reasoning scaffolding and add no useful context for future decisions.
+    """
+    pruned = []
+    i = 0
+    while i < len(history):
+        msg = history[i]
+        tool_calls = getattr(msg, "tool_calls", [])
+        if (
+            tool_calls
+            and len(tool_calls) == 1
+            and tool_calls[0].get("name") == "think"
+            and i + 1 < len(history)
+        ):
+            # Skip both the AI think call and its tool result
+            i += 2
+        else:
+            pruned.append(msg)
+            i += 1
+    return pruned
 
 
 def _should_skip_message(message: BaseMessage) -> bool:
