@@ -282,7 +282,6 @@ class CommaBodySkillContainer(Module):
         """
         return self.command_velocity(vx=float(speed), angular=0.0, duration=float(duration))
 
-    @skill
     def go_to_relative(self, forward: float, left: float, timeout: float = 30.0) -> str:
         """Drive to a relative 2D goal using closed-loop pose feedback.
 
@@ -305,7 +304,6 @@ class CommaBodySkillContainer(Module):
         goal_y = pose.y + local_dx * math.sin(yaw) + local_dy * math.cos(yaw)
         return self._go_to_world(goal_x, goal_y, timeout)
 
-    @skill
     def go_to_absolute(self, x: float, y: float, timeout: float = 30.0) -> str:
         """Drive to an absolute 2D world-coordinate goal using closed-loop pose feedback.
 

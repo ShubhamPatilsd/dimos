@@ -133,6 +133,8 @@ class TaskLedger(Module):
 
         elif msg_type == "tool":
             lowered = text.lower()
+            if text.startswith("Task ledger:"):
+                return
             if any(word in lowered for word in ("failed", "timeout", "error", "cancelled")):
                 self._last_failed_action = text
                 self._current_curiosity = "What safer or simpler action should replace the failed one?"
@@ -145,8 +147,10 @@ class TaskLedger(Module):
             tool_calls = getattr(message, "tool_calls", None) or []
             if tool_calls:
                 first = tool_calls[0]
-                self._subgoal = f"Execute {first.get('name')} with args {first.get('args')}"
-                changed = True
+                tool_name = first.get("name")
+                if tool_name not in {"get_task_ledger", "update_task_ledger"}:
+                    self._subgoal = f"Execute {tool_name} with args {first.get('args')}"
+                    changed = True
             elif text:
                 lowered = text.lower()
                 if any(
