@@ -36,11 +36,15 @@ class WebInput(Module):
     _thread: Thread | None = None
     _human_transport: pLCMTransport[str] | None = None
 
+    def __init__(self, human_input_topic: str = "/human_input", **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self._human_input_topic = human_input_topic
+
     @rpc
     def start(self) -> None:
         super().start()
 
-        self._human_transport = pLCMTransport("/human_input")
+        self._human_transport = pLCMTransport(self._human_input_topic)
 
         audio_subject: rx.subject.Subject[AudioEvent] = rx.subject.Subject()
 

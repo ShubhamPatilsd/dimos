@@ -61,7 +61,7 @@ comma_body_agentic_duet = autoconnect(
         peer_name="Daneel (Go2)",
     ),
     SpeakSkill.blueprint(),
-    WebInput.blueprint(),
+    WebInput.blueprint(human_input_topic="/comma_body/human_input"),
 ).global_config(mcp_port=9991)
 
 __all__ = ["comma_body_agentic_duet"]

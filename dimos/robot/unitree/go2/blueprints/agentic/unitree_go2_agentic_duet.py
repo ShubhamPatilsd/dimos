@@ -32,12 +32,17 @@ the Comma Body agent via ``/comma_body/human_input``.
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
+from dimos.agents.skills.navigation import NavigationSkillContainer
+from dimos.agents.skills.person_follow import PersonFollowSkillContainer
+from dimos.agents.skills.speak_skill import SpeakSkill
+from dimos.agents.web_human_input import WebInput
 from dimos.core.blueprints import autoconnect
-from dimos.robot.unitree.go2.blueprints.agentic._common_agentic import _common_agentic
 from dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_duet_system_prompt import (
     GO2_DUET_SYSTEM_PROMPT,
 )
+from dimos.robot.unitree.go2.connection import GO2Connection
 from dimos.robot.unitree.go2.blueprints.smart.unitree_go2_spatial import unitree_go2_spatial
+from dimos.robot.unitree.unitree_skill_container import UnitreeSkillContainer
 
 unitree_go2_agentic_duet = autoconnect(
     unitree_go2_spatial,
@@ -46,11 +51,15 @@ unitree_go2_agentic_duet = autoconnect(
         human_input_topic="/go2/human_input",
         system_prompt=GO2_DUET_SYSTEM_PROMPT,
     ),
-    _common_agentic,
+    NavigationSkillContainer.blueprint(),
+    PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
+    UnitreeSkillContainer.blueprint(),
+    SpeakSkill.blueprint(),
     InterAgentSkill.blueprint(
         peer_topic="/comma_body/human_input",
         peer_name="Wally (Comma Body)",
     ),
+    WebInput.blueprint(human_input_topic="/go2/human_input"),
 )
 
 __all__ = ["unitree_go2_agentic_duet"]
