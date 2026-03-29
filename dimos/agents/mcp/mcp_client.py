@@ -379,7 +379,20 @@ class McpClient(Module[McpClientConfig]):
         if self.config.prune_think_exchanges:
             self._history = _prune_think_exchanges(self._history)
         if self.config.max_history_messages is not None:
-            self._history = self._history[-self.config.max_history_messages :]
+            history = self._history[-self.config.max_history_messages :]
+            # Walk forward until we reach a clean boundary: a HumanMessage or an
+            # AIMessage without pending tool calls. This prevents orphaning tool
+            # calls whose AI message was cut off by the slice, which causes
+            # BadRequestError: "tool_calls must be followed by tool messages".
+            while history:
+                first = history[0]
+                msg_type = getattr(first, "type", "")
+                if msg_type == "human":
+                    break
+                if msg_type == "ai" and not getattr(first, "tool_calls", []):
+                    break
+                history = history[1:]
+            self._history = history
 
     def _runtime_context_messages(self) -> list[BaseMessage]:
         if not self.config.include_latest_image_by_default:
