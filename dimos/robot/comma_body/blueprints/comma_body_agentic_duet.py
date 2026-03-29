@@ -177,10 +177,11 @@ comma_body_agentic_duet = autoconnect(
         human_input_topic="/comma_body/human_input",
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
         model="gpt-5.4-mini",
-        ota_loop_interval_s=8.0,
+        ota_loop_interval_s=4.0,
         ota_loop_prompt=(
-            "Look at your camera. Call `think` with what you see and what you want to do next, "
-            "then act on it. Do not answer in plain English."
+            "A live camera frame from your onboard camera is attached to this message — look at it. "
+            "Call `think` with what you observe and what you want to do next, then act. "
+            "Do not answer in plain English."
         ),
     ),
     CommaBodySkillContainer.blueprint(),

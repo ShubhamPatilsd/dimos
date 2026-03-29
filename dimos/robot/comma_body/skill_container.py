@@ -253,6 +253,47 @@ class CommaBodySkillContainer(Module):
         return "[thought recorded]"
 
     @skill
+    def move_sequence(self, steps: list[dict]) -> str:
+        """Execute a sequence of movement commands back-to-back with no delay between them.
+
+        Use this instead of chaining individual movement tools when you want fluid,
+        continuous motion. All steps execute at the hardware command rate (20 Hz)
+        with no LLM round-trip between them.
+
+        Each step is a dict with keys:
+          - vx (float): forward/backward, -1.0 to 1.0. Positive = forward.
+          - angular (float): turn, -1.0 to 1.0. Positive = left.
+          - duration (float): seconds to hold this command.
+
+        Example — arc forward then turn right::
+
+            move_sequence([
+                {"vx": 1.0, "angular": 0.0, "duration": 1.0},
+                {"vx": 0.5, "angular": -0.5, "duration": 0.6},
+                {"vx": 1.0, "angular": 0.0, "duration": 0.8},
+            ])
+
+        Args:
+            steps: List of movement step dicts. Maximum 6 steps.
+        """
+        if not steps:
+            return "No steps provided."
+        steps = steps[:6]
+        summary = []
+        try:
+            for step in steps:
+                vx = float(step.get("vx", 0.0))
+                angular = float(step.get("angular", 0.0))
+                duration = float(step.get("duration", 0.5))
+                duration = max(0.05, min(duration, 4.0))
+                self._run_loop(_tool_vx_to_body_lon(vx), angular, duration)
+                summary.append(f"vx={vx:.2f} ang={angular:.2f} {duration:.2f}s")
+        except Exception as e:
+            self._send_stop()
+            return f"move_sequence failed: {e}"
+        return "Sequence done: " + " → ".join(summary)
+
+    @skill
     def command_velocity(self, vx: float, angular: float, duration: float) -> str:
         """Apply a direct joystick-style velocity command for a fixed duration.
 
