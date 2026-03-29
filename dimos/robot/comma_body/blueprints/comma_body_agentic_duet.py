@@ -37,20 +37,143 @@ Prerequisites
 - ``uv sync --extra comma-body`` to install eclipse-zenoh.
 """
 
+import asyncio
+import json
+from typing import Any
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
+from starlette.responses import Response
+import uvicorn
+
 from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.mcp.mcp_client import McpClient
-from dimos.agents.mcp.mcp_server import McpServer
+from dimos.agents.mcp.mcp_server import McpServer, handle_request
 from dimos.agents.task_ledger import TaskLedger
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
 from dimos.agents.web_human_input import WebInput
 from dimos.core.blueprints import autoconnect
+from dimos.core.core import rpc
+from dimos.core.transport import pLCMTransport
 from dimos.robot.comma_body.blueprints.comma_body_spatial import comma_body_spatial
 from dimos.robot.comma_body.skill_container import CommaBodySkillContainer
 from dimos.robot.comma_body.system_prompt import COMMA_BODY_SYSTEM_PROMPT
 
+
+class ScopedMcpServer(McpServer):
+    """MCP server with explicit port, target input topic, and skill filtering."""
+
+    def __init__(
+        self,
+        port: int,
+        human_input_topic: str,
+        allowed_skill_classes: tuple[str, ...],
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._port = port
+        self._human_input_topic = human_input_topic
+        self._allowed_skill_classes = set(allowed_skill_classes)
+        self._app = FastAPI()
+        self._app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["POST"],
+            allow_headers=["*"],
+        )
+        self._app.state.skills = []
+        self._app.state.rpc_calls = {}
+
+        @self._app.post("/mcp")
+        async def mcp_endpoint(request: Request) -> Response:
+            raw = await request.body()
+            try:
+                body = json.loads(raw)
+            except Exception:
+                return JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error"},
+                    },
+                    status_code=400,
+                )
+            result = await handle_request(body, self._app.state.skills, self._app.state.rpc_calls)
+            if result is None:
+                return Response(status_code=204)
+            return JSONResponse(result)
+
+    def _start_server(self, port: int | None = None) -> None:
+        config = uvicorn.Config(self._app, host="0.0.0.0", port=self._port, log_level="info")
+        server = uvicorn.Server(config)
+        self._uvicorn_server = server
+        loop = self._loop
+        assert loop is not None
+        self._serve_future = asyncio.run_coroutine_threadsafe(server.serve(), loop)
+
+    @rpc
+    def on_system_modules(self, modules):  # type: ignore[no-untyped-def]
+        assert self.rpc is not None
+        all_skills = [skill_info for module in modules for skill_info in (module.get_skills() or [])]
+        self._app.state.skills = [
+            skill_info
+            for skill_info in all_skills
+            if skill_info.class_name in self._allowed_skill_classes
+        ]
+        from dimos.core.rpc_client import RpcCall
+
+        self._app.state.rpc_calls = {
+            skill_info.func_name: RpcCall(
+                None, self.rpc, skill_info.func_name, skill_info.class_name, []
+            )
+            for skill_info in self._app.state.skills
+        }
+
+    @rpc
+    def start(self) -> None:
+        super().start()
+
+    @rpc
+    def stop(self) -> None:
+        super().stop()
+
+    def agent_send(self, message: str) -> str:  # type: ignore[override]
+        if not message:
+            raise ValueError("Message cannot be empty")
+        transport: pLCMTransport[str] = pLCMTransport(self._human_input_topic)
+        try:
+            transport.start()
+            transport.publish(message)
+            return f"Message sent to agent: {message[:100]}"
+        finally:
+            transport.stop()
+
+
+def _allowed_classes() -> tuple[str, ...]:
+    names = {bp.module.__name__ for bp in comma_body_spatial.blueprints}
+    names.update(
+        [
+            "ScopedMcpServer",
+            "McpClient",
+            "CommaBodySkillContainer",
+            "TaskLedger",
+            "AutonomyLoop",
+            "InterAgentSkill",
+            "WebInput",
+        ]
+    )
+    return tuple(sorted(names))
+
+
 comma_body_agentic_duet = autoconnect(
     comma_body_spatial,
-    McpServer.blueprint(),
+    ScopedMcpServer.blueprint(
+        port=9991,
+        human_input_topic="/comma_body/human_input",
+        allowed_skill_classes=_allowed_classes(),
+    ),
     McpClient.blueprint(
         mcp_server_url="http://localhost:9991/mcp",
         human_input_topic="/comma_body/human_input",
@@ -87,6 +210,6 @@ comma_body_agentic_duet = autoconnect(
         (AutonomyLoop, "agent", "comma_body_agent"),
         (WebInput, "agent", "comma_body_agent"),
     ]
-).global_config(mcp_port=9991)
+)
 
 __all__ = ["comma_body_agentic_duet"]
