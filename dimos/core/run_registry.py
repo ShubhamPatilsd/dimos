@@ -131,10 +131,17 @@ def cleanup_stale() -> int:
 
 
 def check_port_conflicts(grpc_port: int = 9877) -> RunEntry | None:
-    """Check if any alive run is using the gRPC port. Returns conflicting entry or None."""
-    for entry in list_runs(alive_only=True):
-        if entry.grpc_port == grpc_port:
-            return entry
+    """Legacy no-op conflict check.
+
+    DimOS historically treated a fixed ``grpc_port`` registry field as a
+    single-instance lock for the entire host. That field is not tied to an
+    actual bound socket in the current runtime, so using it to block startup
+    prevents valid multi-process workflows such as running multiple blueprints
+    with distinct web/MCP ports on the same machine.
+
+    Real port conflicts should surface from the modules that actually bind
+    sockets. Keep the function for API compatibility, but do not block startup.
+    """
     return None
 
 
