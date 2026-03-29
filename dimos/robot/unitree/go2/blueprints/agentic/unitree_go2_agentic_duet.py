@@ -29,12 +29,12 @@ The Go2 agent listens for human input on ``/go2/human_input`` and can message
 the Comma Body agent via ``/comma_body/human_input``.
 """
 
+from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
 from dimos.agents.skills.navigation import NavigationSkillContainer
 from dimos.agents.skills.person_follow import PersonFollowSkillContainer
-from dimos.agents.skills.speak_skill import SpeakSkill
 from dimos.agents.web_human_input import WebInput
 from dimos.core.blueprints import autoconnect
 from dimos.robot.unitree.go2.blueprints.agentic.unitree_go2_duet_system_prompt import (
@@ -55,7 +55,24 @@ unitree_go2_agentic_duet = autoconnect(
     NavigationSkillContainer.blueprint(),
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
     UnitreeSkillContainer.blueprint(),
-    SpeakSkill.blueprint(),
+    AutonomyLoop.blueprint(
+        human_input_topic="/go2/human_input",
+        boot_prompt=(
+            "Boot complete. You are Daneel. Quietly establish your own character, decide what "
+            "you are curious about in the environment, and pick a safe next objective. Do not "
+            "speak aloud. If you act, be deliberate and avoid collisions."
+        ),
+        followup_prompt=(
+            "Continue autonomously. Reflect on what just happened, keep your current objective in "
+            "mind, and choose the next safe concrete action. If exploration is already active, "
+            "monitor progress and intervene only if needed."
+        ),
+        idle_prompt=(
+            "You have been idle. Reassess where you are, what your current objective should be, "
+            "and what safe action to take next. Build continuity from your recent experience "
+            "instead of starting over. Do not speak aloud."
+        ),
+    ),
     InterAgentSkill.blueprint(
         peer_topic="/comma_body/human_input",
         peer_name="Wally (Comma Body)",

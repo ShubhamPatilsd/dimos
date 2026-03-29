@@ -37,10 +37,10 @@ Prerequisites
 - ``uv sync --extra comma-body`` to install eclipse-zenoh.
 """
 
+from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
-from dimos.agents.skills.speak_skill import SpeakSkill
 from dimos.agents.web_human_input import WebInput
 from dimos.core.blueprints import autoconnect
 from dimos.robot.comma_body.blueprints.comma_body_spatial import comma_body_spatial
@@ -57,11 +57,27 @@ comma_body_agentic_duet = autoconnect(
         model="gpt-4.1-mini",
     ),
     CommaBodySkillContainer.blueprint(),
+    AutonomyLoop.blueprint(
+        human_input_topic="/comma_body/human_input",
+        boot_prompt=(
+            "Boot complete. You are Wally. Lean into your own curious, mobile character and pick "
+            "a safe objective that fits a wheeled robot. Do not speak aloud. Stay observant and "
+            "coordinate with Daneel when useful."
+        ),
+        followup_prompt=(
+            "Continue autonomously. Reflect on what just happened, keep your current objective in "
+            "mind, and choose the next safe concrete action. If Daneel should know something, use "
+            "message_peer."
+        ),
+        idle_prompt=(
+            "You have been idle. Build on your recent experience, decide what you want to inspect "
+            "or accomplish next, and choose a safe next action. Do not speak aloud."
+        ),
+    ),
     InterAgentSkill.blueprint(
         peer_topic="/go2/human_input",
         peer_name="Daneel (Go2)",
     ),
-    SpeakSkill.blueprint(),
     WebInput.blueprint(human_input_topic="/comma_body/human_input", port=5556),
 ).remappings(
     [

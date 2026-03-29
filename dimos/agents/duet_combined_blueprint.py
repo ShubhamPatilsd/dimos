@@ -27,13 +27,13 @@ from starlette.responses import Response
 import uvicorn
 
 from dimos.agents.annotation import skill
+from dimos.agents.autonomy_loop import AutonomyLoop
 from dimos.agents.duet_dashboard import duet_dashboard
 from dimos.agents.mcp.mcp_client import McpClient
 from dimos.agents.mcp.mcp_server import McpServer, handle_request
 from dimos.agents.skills.inter_agent_skill import InterAgentSkill
 from dimos.agents.skills.navigation import NavigationSkillContainer
 from dimos.agents.skills.person_follow import PersonFollowSkillContainer
-from dimos.agents.skills.speak_skill import SpeakSkill
 from dimos.agents.web_human_input import WebInput
 from dimos.core.blueprints import Blueprint, autoconnect
 from dimos.core.core import rpc
@@ -83,12 +83,12 @@ class CommaBodyWebInput(WebInput):
     """Comma Body-specific web input."""
 
 
-class Go2SpeakSkill(SpeakSkill):
-    """Go2-specific speech skill."""
+class Go2AutonomyLoop(AutonomyLoop):
+    """Go2-specific autonomy loop."""
 
 
-class CommaBodySpeakSkill(SpeakSkill):
-    """Comma Body-specific speech skill."""
+class CommaBodyAutonomyLoop(AutonomyLoop):
+    """Comma Body-specific autonomy loop."""
 
 
 class Go2InterAgentSkill(InterAgentSkill):
@@ -239,7 +239,7 @@ go2_allowed_classes = _allowed_classes(
         NavigationSkillContainer,
         PersonFollowSkillContainer,
         UnitreeSkillContainer,
-        Go2SpeakSkill,
+        Go2AutonomyLoop,
         Go2InterAgentSkill,
         Go2WebInput,
     ),
@@ -251,7 +251,7 @@ comma_allowed_classes = _allowed_classes(
         CommaBodyScopedMcpServer,
         CommaBodyMcpClient,
         CommaBodySkillContainer,
-        CommaBodySpeakSkill,
+        CommaBodyAutonomyLoop,
         CommaBodyInterAgentSkill,
         CommaBodyWebInput,
     ),
@@ -268,11 +268,29 @@ duet_combined = autoconnect(
     Go2McpClient.blueprint(
         human_input_topic="/go2/human_input",
         system_prompt=GO2_DUET_SYSTEM_PROMPT,
+        model="gpt-4.1-mini",
     ),
     NavigationSkillContainer.blueprint(),
     PersonFollowSkillContainer.blueprint(camera_info=GO2Connection.camera_info_static),
     UnitreeSkillContainer.blueprint(),
-    Go2SpeakSkill.blueprint(),
+    Go2AutonomyLoop.blueprint(
+        human_input_topic="/go2/human_input",
+        boot_prompt=(
+            "Boot complete. You are Daneel. Quietly establish your own character, decide what "
+            "you are curious about in the environment, and pick a safe next objective. Do not "
+            "speak aloud. If you act, be deliberate and avoid collisions."
+        ),
+        followup_prompt=(
+            "Continue autonomously. Reflect on what just happened, keep your current objective in "
+            "mind, and choose the next safe concrete action. If exploration is already active, "
+            "monitor progress and intervene only if needed."
+        ),
+        idle_prompt=(
+            "You have been idle. Reassess where you are, what your current objective should be, "
+            "and what safe action to take next. Build continuity from your recent experience "
+            "instead of starting over. Do not speak aloud."
+        ),
+    ),
     Go2InterAgentSkill.blueprint(
         peer_topic="/comma_body/human_input",
         peer_name="Wally (Comma Body)",
@@ -288,13 +306,30 @@ duet_combined = autoconnect(
         mcp_server_url="http://localhost:9991/mcp",
         human_input_topic="/comma_body/human_input",
         system_prompt=COMMA_BODY_SYSTEM_PROMPT,
+        model="gpt-4.1-mini",
     ),
     CommaBodySkillContainer.blueprint(),
+    CommaBodyAutonomyLoop.blueprint(
+        human_input_topic="/comma_body/human_input",
+        boot_prompt=(
+            "Boot complete. You are Wally. Lean into your own curious, mobile character and pick "
+            "a safe objective that fits a wheeled robot. Do not speak aloud. Stay observant and "
+            "coordinate with Daneel when useful."
+        ),
+        followup_prompt=(
+            "Continue autonomously. Reflect on what just happened, keep your current objective in "
+            "mind, and choose the next safe concrete action. If Daneel should know something, use "
+            "message_peer."
+        ),
+        idle_prompt=(
+            "You have been idle. Build on your recent experience, decide what you want to inspect "
+            "or accomplish next, and choose a safe next action. Do not speak aloud."
+        ),
+    ),
     CommaBodyInterAgentSkill.blueprint(
         peer_topic="/go2/human_input",
         peer_name="Daneel (Go2)",
     ),
-    CommaBodySpeakSkill.blueprint(),
     CommaBodyWebInput.blueprint(human_input_topic="/comma_body/human_input", port=5556),
     duet_dashboard,
 ).remappings(
